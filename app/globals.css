@@ -1,30 +1,142 @@
 @import 'tailwindcss';
 
+/* =====================================================================
+   Adego Beep — globals.css (Tailwind v4)
+   - :root / @theme eliminate duplication
+   - Brand Palette: primary=navy, accent=light blue, success=green(real-time)
+   ===================================================================== */
+
+@custom-variant dark (&:is(.dark *));
+
 :root {
+    --font-size: 16px;
+    --radius: 0.625rem;
+
+    /* Surface / text */
     --background: #ffffff;
-    --foreground: #171717;
-    /* 린터 에러 방지를 위한 기본 폰트 변수 선언 */
-    --font-geist-sans: ui-sans-serif, system-ui, sans-serif;
-    --font-geist-mono:
-        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --foreground: oklch(0.145 0 0);
+    --card: #ffffff;
+    --card-foreground: oklch(0.145 0 0);
+    --popover: #ffffff;
+    --popover-foreground: oklch(0.145 0 0);
+
+    /* Brand */
+    --primary: #002D62;              /* Navy — header/brand */
+    --primary-foreground: #ffffff;
+    --secondary: oklch(0.95 0.0058 264.53);
+    --secondary-foreground: #002D62;
+
+    /* Action / link (light blue) */
+    --accent: #2563EB;
+    --accent-foreground: #ffffff;
+
+    /* Real-time / on-time (green) — "Departs in 5 min" */
+    --success: #16A34A;
+    --success-foreground: #ffffff;
+
+    /* Delay warning (amber) */
+    --warning: #F59E0B;
+    --warning-foreground: #ffffff;
+
+    --muted: #ececf0;
+    --muted-foreground: #717182;
+
+    --destructive: #d4183d;
+    --destructive-foreground: #ffffff;
+
+    --border: rgba(0, 0, 0, 0.1);
+    --input: transparent;
+    --input-background: #f3f3f5;
+    --ring: #2563EB;
+
+    --font-weight-medium: 500;
+    --font-weight-normal: 400;
+    --font-sans: ui-sans-serif, system-ui, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
 }
 
-@theme {
+.dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+
+    --primary: #1E4E8C;              /* Slightly lighter navy in dark mode */
+    --primary-foreground: #ffffff;
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+
+    --accent: #3B82F6;
+    --accent-foreground: #ffffff;
+    --success: #22C55E;
+    --success-foreground: #052e16;
+    --warning: #FBBF24;
+    --warning-foreground: #422006;
+
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --destructive: oklch(0.396 0.141 25.723);
+    --destructive-foreground: oklch(0.985 0 0);
+    --border: oklch(0.269 0 0);
+    --input: oklch(0.269 0 0);
+    --ring: #3B82F6;
+}
+
+/* Tailwind v4: expose CSS variables as utility classes (text-primary, bg-accent, etc.) */
+@theme inline {
     --color-background: var(--background);
     --color-foreground: var(--foreground);
-    --font-sans: var(--font-geist-sans);
-    --font-mono: var(--font-geist-mono);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-success: var(--success);
+    --color-success-foreground: var(--success-foreground);
+    --color-warning: var(--warning);
+    --color-warning-foreground: var(--warning-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+
+    --font-sans: var(--font-sans);
+    --font-mono: var(--font-mono);
+
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
 }
 
-@media (prefers-color-scheme: dark) {
-    :root {
-        --background: #0a0a0a;
-        --foreground: #ededed;
+@layer base {
+    * {
+        @apply border-border outline-ring/50;
     }
-}
+    body {
+        @apply bg-background text-foreground;
+        font-family: var(--font-sans);
+    }
+    html {
+        font-size: var(--font-size);
+    }
+    h1 { font-size: var(--text-2xl); font-weight: var(--font-weight-medium); line-height: 1.5; }
+    h2 { font-size: var(--text-xl);  font-weight: var(--font-weight-medium); line-height: 1.5; }
+    h3 { font-size: var(--text-lg);  font-weight: var(--font-weight-medium); line-height: 1.5; }
+    h4 { font-size: var(--text-base);font-weight: var(--font-weight-medium); line-height: 1.5; }
 
-body {
-    background: var(--background);
-    color: var(--foreground);
-    font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+    .scrollbar-thin { scrollbar-width: thin; scrollbar-color: rgba(229,231,235,0.5) transparent; }
+    .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background-color: rgba(229,231,235,0.5); border-radius: 2px; }
 }
