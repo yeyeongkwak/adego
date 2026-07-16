@@ -3,7 +3,7 @@
     "version": "0.1.0",
     "private": true,
     "scripts": {
-        "dev": "(sleep 2 && open http://localhost:3001) & next dev",
+        "dev": "(sleep 2 && open http://localhost:3000) & next dev",
         "build": "next build",
         "start": "next start",
         "lint": "eslint"
@@ -27,5 +27,6 @@
         "prettier": "^3.8.3",
         "tailwindcss": "^4",
         "typescript": "^5"
-    }
+    },
+    "packageManager": "yarn@4.17.1"
 }
