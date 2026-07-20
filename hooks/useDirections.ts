@@ -16,9 +16,11 @@ const fetchDirections = async (
         destination: `${destination.lat},${destination.lng}`,
     })
 
-    if (timeOption?.mode === 'depart')
+    // 'now' isn't a real timestamp -> omit it and let Routes API default to
+    // the current time server-side, instead of sending the literal string.
+    if (timeOption?.mode === 'depart' && timeOption.time !== 'now')
         params.set('departureTime', timeOption.time)
-    if (timeOption?.mode === 'arrive')
+    if (timeOption?.mode === 'arrive' && timeOption.time !== 'now')
         params.set('arrivalTime', timeOption.time)
 
     const res = await fetch(`/api/directions?${params}`, { signal })
