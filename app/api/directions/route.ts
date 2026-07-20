@@ -72,8 +72,9 @@ const fetchRouteColors = async (
     if (error || !data) return map
     for (const row of data as any[]) {
         if (!row.route_color) continue
-        if (row.route_short_name) map.set(row.route_short_name, row.route_color)
-        if (row.route_id) map.set(row.route_id, row.route_color)
+        const color = `#${row.route_color}`
+        if (row.route_short_name) map.set(row.route_short_name, color)
+        if (row.route_id) map.set(row.route_id, color)
     }
     return map
 }
