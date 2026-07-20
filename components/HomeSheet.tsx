@@ -1,6 +1,14 @@
 'use client'
 
-import { Clock, MapPin, Navigation, Search } from 'lucide-react'
+import {
+    BusFront,
+    Clock,
+    MapPin,
+    Navigation,
+    Search,
+    TrainFront,
+    TramFront,
+} from 'lucide-react'
 import {
     Drawer,
     DrawerContent,
@@ -10,10 +18,26 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import type { NearbyStop } from '@/types/common'
+import type { NearbyStop, StopMode } from '@/types/common'
 import { Spinner } from '@/components/ui/spinner'
 
-// Favourites/Recent은 아직 목업 — 로그인/DB 연동 후 교체.
+const STOP_MODE_STYLE: Record<
+    StopMode,
+    { icon: typeof BusFront; iconClass: string; bgClass: string }
+> = {
+    BUS: { icon: BusFront, iconClass: 'text-primary', bgClass: 'bg-secondary' },
+    TRAM: {
+        icon: TramFront,
+        iconClass: 'text-amber-600',
+        bgClass: 'bg-amber-50',
+    },
+    RAIL: {
+        icon: TrainFront,
+        iconClass: 'text-blue-600',
+        bgClass: 'bg-blue-50',
+    },
+}
+
 const favouriteStops = [
     { id: 'fav-1', name: 'King William St', code: 'KWS001' },
     { id: 'fav-2', name: 'University of Adelaide', code: 'UNIV01' },
@@ -29,21 +53,29 @@ function StopRow({
     name,
     code,
     distanceM,
+    mode,
     onClick,
 }: {
     name: string
     code: string | null
     distanceM?: number
+    mode?: StopMode
     onClick?: () => void
 }) {
+    const style = mode ? STOP_MODE_STYLE[mode] : null
+    const Icon = style?.icon ?? MapPin
     return (
         <Button
             variant="ghost"
             className="h-auto w-full justify-start gap-3 rounded-xl p-3 hover:bg-gray-50 hover:text-foreground"
             onClick={onClick}
         >
-            <div className="rounded-full bg-secondary p-2">
-                <MapPin className="size-4 text-primary" />
+            <div
+                className={`rounded-full p-2 ${style?.bgClass ?? 'bg-secondary'}`}
+            >
+                <Icon
+                    className={`size-4 ${style?.iconClass ?? 'text-primary'}`}
+                />
             </div>
             <div className="min-w-0 flex-1 text-left">
                 <p className="truncate text-sm font-semibold">{name}</p>
@@ -87,6 +119,7 @@ function NearbyList({
                     name={stop.name}
                     code={stop.code}
                     distanceM={stop.distanceM}
+                    mode={stop.mode}
                     onClick={() => onSelect(stop)}
                 />
             ))}
@@ -127,17 +160,11 @@ export function HomeSheet({
             activeSnapPoint={activeSnapPoint}
             setActiveSnapPoint={setActiveSnapPoint}
             modal={false}
-            // false였으면 가장 작은 snap point(0.5) 밑으로는 못 내려가고 거기서
-            // 다시 튕겨 올라옴 — 끝까지 드래그하면 완전히 닫히게 하려면 true여야 함.
             dismissible
-            // vaul의 body 스크롤 잠금이 시트 밖(지도)의 터치 드래그까지 막아서 해제.
             disablePreventScroll
         >
-            {/* 모바일 앱 셸(max-w-md)과 폭을 맞춘다 — vaul은 body에 포탈되므로 여기서 직접 제약 */}
             <DrawerContent
                 className="mx-auto max-w-md max-h-[90vh]"
-                // modal=false라 vaul이 바깥 클릭에도 기본으로는 안 닫음(의도적) —
-                // 지도를 포함해 시트 밖 어디를 클릭해도 닫히길 원하므로 직접 연결.
                 onPointerDownOutside={() => onOpenChange(false)}
             >
                 <DrawerTitle className="sr-only">Where to?</DrawerTitle>
@@ -145,8 +172,6 @@ export function HomeSheet({
                     Search a destination or pick a nearby stop
                 </DrawerDescription>
 
-                {/* pb: Footer가 이제 Drawer보다 z-index가 높아 항상 위에 떠서,
-                    마지막 항목이 그 밑에 가려지지 않게 여유를 둠. */}
                 <div className="flex flex-col gap-4 overflow-y-auto px-4 pt-3 pb-24 scrollbar-thin">
                     <div className="relative">
                         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-gray-400" />
