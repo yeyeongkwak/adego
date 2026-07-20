@@ -65,7 +65,7 @@ export function LocationSearchSheet({
 
     // Only fire the autocomplete request once there's more than 1 character.
     const hasQuery = searchQuery.trim().length > 1
-    const { predictions, loading } = useAutocomplete(
+    const { predictions, loading, sessionToken, endSession } = useAutocomplete(
         hasQuery ? searchQuery : ''
     )
 
@@ -164,9 +164,10 @@ export function LocationSearchSheet({
     const handlePick = async (prediction: Prediction) => {
         setResolving(true)
         try {
-            const res = await fetch(
-                `/api/place-coords?placeId=${encodeURIComponent(prediction.placeId)}`
-            )
+            const params = new URLSearchParams({ placeId: prediction.placeId })
+            if (sessionToken) params.set('sessionToken', sessionToken)
+
+            const res = await fetch(`/api/place-coords?${params.toString()}`)
             const data = await res.json()
             if (data.lat != null && data.lng != null) {
                 onLocationSelect({
@@ -177,6 +178,7 @@ export function LocationSearchSheet({
                 })
             }
         } finally {
+            endSession()
             setResolving(false)
             setSearchQuery('')
         }
@@ -192,8 +194,6 @@ export function LocationSearchSheet({
             <SheetContent
                 side="bottom"
                 showCloseButton={false}
-                // 모바일 앱 셸(max-w-md)과 폭을 맞춘다 — Sheet도 body에 포탈되므로
-                // (Footer/HomeSheet과 같은 이유) 여기서 직접 제약해야 함.
                 className="inset-0 mx-auto h-full w-full max-w-md gap-0 rounded-none border-0 bg-white p-0 flex flex-col"
             >
                 <SheetHeader className="sr-only">
