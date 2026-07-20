@@ -26,7 +26,7 @@ export interface ILeg {
     durationSec: number
     // Only populated when mode is TRANSIT ↓
     routeName?: string // "801" / "Glenelg" — realtime matching key + display label
-    routeColor?: string
+    routeColor?: string // "#RRGGBB"
     vehicleType?: string // BUS / TRAM / TRAIN — used for the icon
     departureStopName?: string
     arrivalStopName?: string
@@ -76,20 +76,6 @@ export function firstWalkLeg(option: IRouteOption): ILeg | undefined {
 export function transferCount(option: IRouteOption): number {
     const transit = option.legs.filter((l) => l.mode === 'TRANSIT').length
     return Math.max(0, transit - 1)
-}
-
-// Vehicle type → emoji / icon key
-export function vehicleEmoji(type?: string): string {
-    switch (type) {
-        case 'TRAM':
-            return '🚊'
-        case 'HEAVY_RAIL':
-        case 'RAIL':
-        case 'SUBWAY':
-            return '🚆'
-        default:
-            return '🚌' // BUS and everything else
-    }
 }
 
 // =====================================================================
@@ -159,6 +145,15 @@ export type Arrival = {
     minutesUntil: number | null // null = no realtime data for this pair
     delaySeconds: number | null // + late, - early, 0 on time
     isRealtime: boolean
+    tripId: string | null // GTFS-R trip_id of the matched vehicle, for /api/vehicle-position
+}
+
+// Live GPS fix for one vehicle (/api/vehicle-position response).
+export type VehiclePosition = {
+    lat: number
+    lng: number
+    bearing: number | null // degrees, 0 = north; null if the vehicle doesn't report it
+    updatedAtSec: number // unix seconds, from the feed's own timestamp
 }
 
 // Next arrivals at a specific stop, regardless of route (for map callouts).
@@ -174,3 +169,6 @@ export type StopArrival = {
 
 export const TRIP_UPDATES_URL =
     'https://gtfs.adelaidemetro.com.au/v1/realtime/trip_updates'
+
+export const VEHICLE_POSITIONS_URL =
+    'https://gtfs.adelaidemetro.com.au/v1/realtime/vehicle_positions'
