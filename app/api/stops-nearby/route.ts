@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import type { NearbyStop } from '@/types/common'
+import { NearbyStop, stopModeFromRouteType } from '@/types/common'
 
 const DEFAULT_RADIUS_M = 600
 const MAX_RADIUS_M = 3000
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
     const supabase = createClient(url, key, { auth: { persistSession: false } })
     const { data, error } = await supabase
         .from('gtfs_stops')
-        .select('stop_id, stop_code, stop_name, stop_lat, stop_lon')
+        .select('stop_id, stop_code, stop_name, stop_lat, stop_lon, route_type')
         .gte('stop_lat', lat - dLat)
         .lte('stop_lat', lat + dLat)
         .gte('stop_lon', lng - dLng)
@@ -89,6 +89,7 @@ export async function GET(req: NextRequest) {
             distanceM: Math.round(
                 distanceM(lat, lng, r.stop_lat as number, r.stop_lon as number)
             ),
+            mode: stopModeFromRouteType(r.route_type as number | null),
         }))
         .filter((s) => s.distanceM <= radius)
         .sort((a, b) => a.distanceM - b.distanceM)

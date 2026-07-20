@@ -12,11 +12,8 @@ import type { MapEvent } from '@vis.gl/react-google-maps'
 import { Loader2 } from 'lucide-react'
 import type { NearbyStop } from '@/types/common'
 import { useStopArrivals } from '@/hooks/useStopArrivals'
+import { STOP_ICON_URL } from '@/util/map/stopIcons'
 
-// Lives inside <Map> (useMap() only works for descendants of it) so picking
-// a stop from the sheet's Nearby list can also recenter the map — the map
-// itself stays uncontrolled (defaultCenter) so the user can still freely
-// pan/zoom without fighting a controlled `center` prop.
 function PanToSelectedStop({ stop }: { stop: NearbyStop | null }) {
     const map = useMap()
     useEffect(() => {
@@ -26,32 +23,6 @@ function PanToSelectedStop({ stop }: { stop: NearbyStop | null }) {
     }, [map, stop])
     return null
 }
-
-// Navy circle + lucide's <BusFront> glyph, baked into an SVG data URI —
-// legacy google.maps.Marker only takes an image url/vector Symbol for its
-// icon, not a React component. (Path data copied from
-// lucide-react/dist/esm/icons/bus-front.mjs — tried generating this from
-// the live component via react-dom/server's renderToStaticMarkup, but
-// calling that at module scope runs during Next's SSR pass and corrupts
-// React's hook dispatcher via a nested render, so: hand-copied it is.)
-const BUS_STOP_ICON_URL =
-    'data:image/svg+xml;charset=UTF-8,' +
-    encodeURIComponent(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-            <circle cx="16" cy="16" r="14" fill="#002D62" stroke="#FFFFFF" stroke-width="2.5"/>
-            <g transform="translate(7,7) scale(0.75)" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 6 2 7"/>
-                <path d="M10 6h4"/>
-                <path d="m22 7-2-1"/>
-                <rect width="16" height="16" x="4" y="3" rx="2"/>
-                <path d="M4 11h16"/>
-                <path d="M8 15h.01"/>
-                <path d="M16 15h.01"/>
-                <path d="M6 19v2"/>
-                <path d="M18 21v-2"/>
-            </g>
-        </svg>`
-    )
 
 interface HomeMapProps {
     center: { lat: number; lng: number }
@@ -172,7 +143,7 @@ export function HomeMap({
                             position={{ lat: stop.lat, lng: stop.lng }}
                             title={`${stop.name}${stop.code ? ` (${stop.code})` : ''}`}
                             icon={{
-                                url: BUS_STOP_ICON_URL,
+                                url: STOP_ICON_URL[stop.mode],
                                 scaledSize: {
                                     width: 32,
                                     height: 32,

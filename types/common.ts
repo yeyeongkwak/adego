@@ -55,8 +55,7 @@ export enum RouteTypes {
 }
 
 export type TimeOption =
-    | { mode: 'depart'; time: string }
-    | { mode: 'arrive'; time: string }
+    { mode: 'depart'; time: string } | { mode: 'arrive'; time: string }
 
 // =====================================================================
 // UI helpers: derive the flat values a card needs from the leg array
@@ -121,6 +120,8 @@ export function textOnColor(hex?: string): string {
     return luminance > 0.6 ? '#1F2937' : '#FFFFFF'
 }
 
+export type StopMode = 'BUS' | 'TRAM' | 'RAIL'
+
 // ---- Nearby stops (/api/stops-nearby response) ----------------------
 export type NearbyStop = {
     id: string // gtfs stop_id
@@ -129,6 +130,27 @@ export type NearbyStop = {
     lat: number
     lng: number
     distanceM: number // Distance from the current location, in meters
+    mode: StopMode
+}
+
+export function stopModeFromRouteType(routeType: number | null): StopMode {
+    if (routeType == null) return 'BUS'
+    if (
+        routeType === 0 ||
+        routeType === 5 ||
+        (routeType >= 900 && routeType < 1000)
+    ) {
+        return 'TRAM'
+    }
+    if (
+        routeType === 1 ||
+        routeType === 2 ||
+        (routeType >= 100 && routeType < 200) ||
+        (routeType >= 400 && routeType < 500)
+    ) {
+        return 'RAIL'
+    }
+    return 'BUS'
 }
 
 export type Arrival = {
