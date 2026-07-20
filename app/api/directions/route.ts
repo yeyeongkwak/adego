@@ -2,25 +2,50 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { IRouteOption } from '@/types/common'
 
+const ADELAIDE_TZ = 'Australia/Adelaide'
+
+// Routes API returns durations as protobuf Duration strings ("725s") instead
+// of Google-hosted display text -> format them ourselves.
+const formatDuration = (
+    durationField?: string
+): { text: string; sec: number } => {
+    const sec = durationField ? Math.round(parseFloat(durationField)) : 0
+    const mins = Math.round(sec / 60)
+    if (mins < 60) return { text: `${mins} min${mins === 1 ? '' : 's'}`, sec }
+    const h = Math.floor(mins / 60)
+    const m = mins % 60
+    const text = m === 0 ? `${h} hr${h === 1 ? '' : 's'}` : `${h} hr ${m} min`
+    return { text, sec }
+}
+
+const formatTimeLabel = (iso?: string): string | undefined => {
+    if (!iso) return undefined
+    return new Intl.DateTimeFormat('en-AU', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: ADELAIDE_TZ,
+    }).format(new Date(iso))
+}
+
 const toLeg = (step: any) => {
-    if (step.travel_mode === 'WALKING') {
-        return {
-            mode: 'WALKING',
-            durationText: step.duration.text,
-            durationSec: step.duration.value,
-        }
+    const { text, sec } = formatDuration(step.staticDuration)
+
+    if (step.travelMode === 'WALK') {
+        return { mode: 'WALKING', durationText: text, durationSec: sec }
     }
 
-    const td = step.transit_details ?? {}
+    const td = step.transitDetails ?? {}
     return {
         mode: 'TRANSIT',
-        durationText: step.duration.text,
-        durationSec: step.duration.value,
-        routeName: td?.short_name ?? td.line?.name,
-        vehicleTYpe: td.line?.vehicle?.type,
-        departureStopName: td.departure_stop?.name,
-        arrivalStopName: td.arrival_stop?.name,
-        numStops: td.num_stops,
+        durationText: text,
+        durationSec: sec,
+        routeName: td.transitLine?.nameShort ?? td.transitLine?.name,
+        routeColor: td.transitLine?.color, // fallback; overridden by gtfs_routes below when available
+        vehicleType: td.transitLine?.vehicle?.type,
+        departureStopName: td.stopDetails?.departureStop?.name,
+        arrivalStopName: td.stopDetails?.arrivalStop?.name,
+        numStops: td.stopCount,
     }
 }
 
@@ -57,38 +82,71 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const origin = searchParams.get('origin')
     const destination = searchParams.get('destination')
-    const departureTime = searchParams.get('departureTime') || 'now'
+    const departureTime = searchParams.get('departureTime')
+    const arrivalTime = searchParams.get('arrivalTime')
 
     if (!origin || !destination) {
         return NextResponse.json(
             {
-                error: 'Both origin and destination require langtitude and longitude',
+                error: 'Both origin and destination require latitude and longitude',
             },
             { status: 400 }
         )
     }
 
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY_NO_REFERRER
+    const [originLat, originLng] = origin.split(',').map(Number)
+    const [destLat, destLng] = destination.split(',').map(Number)
+
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY
     if (!apiKey) {
         return NextResponse.json(
-            { error: '서버에 GOOGLE_MAPS_API_KEY 가 없습니다.' },
+            { error: 'GOOGLE_MAPS_API_KEY is empty' },
             { status: 500 }
         )
     }
 
-    const url = new URL('https://maps.googleapis.com/maps/api/directions/json')
-    url.searchParams.set('origin', origin)
-    url.searchParams.set('destination', destination)
-    url.searchParams.set('mode', 'transit') // 버스/트램/기차 자동 비교
-    url.searchParams.set('alternatives', 'true') // 여러 경로 옵션 (네 목업의 카드 여러 개)
-    url.searchParams.set('departure_time', departureTime)
-    url.searchParams.set('region', 'au') // 애들레이드(호주) 편향
-    url.searchParams.set('key', apiKey)
+    const body: Record<string, unknown> = {
+        origin: {
+            location: { latLng: { latitude: originLat, longitude: originLng } },
+        },
+        destination: {
+            location: { latLng: { latitude: destLat, longitude: destLng } },
+        },
+        travelMode: 'TRANSIT',
+        computeAlternativeRoutes: true,
+        regionCode: 'AU',
+    }
+
+    if (departureTime) body.departureTime = departureTime
+    else if (arrivalTime) body.arrivalTime = arrivalTime
 
     let data: any
     try {
-        const res = await fetch(url.toString())
+        const res = await fetch(
+            'https://routes.googleapis.com/directions/v2:computeRoutes',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Goog-Api-Key': apiKey,
+                    // Only ask for the fields we render -> cheaper + smaller response.
+                    'X-Goog-FieldMask':
+                        'routes.duration,routes.legs.steps.travelMode,routes.legs.steps.staticDuration,routes.legs.steps.transitDetails',
+                },
+                body: JSON.stringify(body),
+            }
+        )
         data = await res.json()
+
+        if (!res.ok) {
+            return NextResponse.json(
+                {
+                    error: 'Directions failed',
+                    detail: data?.error?.message ?? null,
+                },
+                { status: 502 }
+            )
+        }
     } catch {
         return NextResponse.json(
             { error: '구글 요청 실패(네트워크).' },
@@ -96,30 +154,38 @@ export async function GET(req: NextRequest) {
         )
     }
 
-    if (data.status !== 'OK') {
-        // ZERO_RESULTS: 경로 없음 / REQUEST_DENIED: 키·billing 문제 / OVER_QUERY_LIMIT 등
-        const code = data.status === 'ZERO_RESULTS' ? 404 : 502
-        return NextResponse.json(
-            {
-                error: `Directions: ${data.status}`,
-                detail: data.error_message ?? null,
-            },
-            { status: code }
-        )
+    if (!data.routes?.length) {
+        return NextResponse.json({ error: 'No route found.' }, { status: 404 })
     }
 
-    const options: IRouteOption[] = (data.routes ?? []).map((route: any) => {
+    const options: IRouteOption[] = data.routes.map((route: any) => {
         const leg = route.legs[0] // A→B 단일 구간 여정이라 legs[0]
+        const steps = (leg.steps ?? []).map(toLeg)
+        const transitSteps = (leg.steps ?? []).filter(
+            (s: any) => s.transitDetails
+        )
+        const firstTransit = transitSteps[0]?.transitDetails
+        const lastTransit =
+            transitSteps[transitSteps.length - 1]?.transitDetails
+
         return {
-            durationText: leg.duration.text,
-            departureText: leg.departure_time?.text,
-            departureValue: leg.departure_time?.value,
-            arrivalText: leg.arrival_time?.text,
-            legs: (leg.steps ?? []).map(toLeg),
+            durationText: formatDuration(route.duration).text,
+            departureText: formatTimeLabel(
+                firstTransit?.stopDetails?.departureTime
+            ),
+            departureValue: firstTransit?.stopDetails?.departureTime
+                ? Math.floor(
+                      new Date(
+                          firstTransit.stopDetails.departureTime
+                      ).getTime() / 1000
+                  )
+                : undefined,
+            arrivalText: formatTimeLabel(lastTransit?.stopDetails?.arrivalTime),
+            legs: steps,
         }
     })
 
-    // Filter walking legs
+    // Filter walking-only options
     const transitOptions = options.filter((opt) =>
         opt.legs.some((l) => l.mode === 'TRANSIT')
     )
@@ -138,7 +204,7 @@ export async function GET(req: NextRequest) {
     for (const opt of transitOptions) {
         for (const leg of opt.legs) {
             if (leg.mode === 'TRANSIT' && leg.routeName) {
-                leg.routeColor = colorMap.get(leg.routeName)
+                leg.routeColor = colorMap.get(leg.routeName) ?? leg.routeColor
             }
         }
     }

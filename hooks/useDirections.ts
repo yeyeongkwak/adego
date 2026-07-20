@@ -26,7 +26,7 @@ const fetchDirections = async (
 
     if (!res.ok) {
         throw new Error(
-            data.error === 'Directions:ZERO_RESULTS'
+            res.status === 404
                 ? 'No public transport route found for this trip'
                 : 'Failed to load the route'
         )
