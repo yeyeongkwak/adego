@@ -36,6 +36,7 @@ type TrackedLeg = {
     tripId: string
     routeName?: string
     vehicleType?: string
+    routeColor?: string
 }
 
 function totalWalkMinutes(legs: ILeg[]): number {
@@ -201,6 +202,7 @@ export function RouteRealTimeCard({
                                             tripId: legArrival!.tripId!,
                                             routeName: leg.routeName,
                                             vehicleType: leg.vehicleType,
+                                            routeColor: leg.routeColor,
                                         })
                                     }}
                                     className="flex size-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100"
@@ -248,6 +250,7 @@ export function RouteRealTimeCard({
                 tripId={trackedLeg?.tripId ?? null}
                 routeName={trackedLeg?.routeName}
                 vehicleType={trackedLeg?.vehicleType}
+                routeColor={trackedLeg?.routeColor}
             />
         </Card>
     )

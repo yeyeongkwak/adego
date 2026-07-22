@@ -1,12 +1,17 @@
-// "Where's my bus?" bottom sheet — opened from a RouteRealTimeCard's vehicle
-// button. Shows a small live map with both the vehicle serving that card's
-// tripId (see /api/vehicle-position for how that trip is resolved) and the
-// user's own location, so you can see how far away it actually is.
+// "Where's my bus?" bottom sheet — opened from a RouteRealTimeCard's vehicle button.
+// Shows a small live map with the vehicle serving that card's tripId (see /api/vehicle-position for how that trip is resolved),
+// the user's own location, and the vehicle's full route shape end to end (from /api/route-shape's GTFS static geometry)
 
 'use client'
 
-import { useEffect, useState } from 'react'
-import { APIProvider, Map, Marker, useMap } from '@vis.gl/react-google-maps'
+import { useEffect, useMemo, useState } from 'react'
+import {
+    APIProvider,
+    Map,
+    Marker,
+    Polyline,
+    useMap,
+} from '@vis.gl/react-google-maps'
 import {
     Drawer,
     DrawerContent,
@@ -16,7 +21,12 @@ import {
 } from '@/components/ui/drawer'
 import { Spinner } from '@/components/ui/spinner'
 import { useVehiclePosition } from '@/hooks/useVehiclePosition'
-import { STOP_ICON_URL } from '@/util/map/stopIcons'
+import { useRouteShape, type RouteShapePoint } from '@/hooks/useRouteShape'
+import {
+    buildStopIconUrl,
+    STOP_ICON_DEFAULT_COLOR,
+    STOP_ICON_GLYPH,
+} from '@/util/map/stopIcons'
 import {
     VEHICLE_LABEL,
     vehicleTypeToStopMode,
@@ -27,7 +37,8 @@ interface VehiclePositionSheetProps {
     onOpenChange: (open: boolean) => void
     tripId: string | null
     routeName?: string
-    vehicleType?: string // picks the bus/tram/rail icon
+    vehicleType?: string // picks the bus/tram/rail icon + its default color
+    routeColor?: string // "#RRGGBB" — colors the icon + route line when known
 }
 
 function secondsAgoLabel(updatedAtSec: number): string {
@@ -36,16 +47,24 @@ function secondsAgoLabel(updatedAtSec: number): string {
     return `${Math.round(sec / 60)} min ago`
 }
 
-// Keeps both the vehicle and the user in view, refit whenever either moves —
-// the map itself stays uncontrolled (defaultCenter), this just nudges it.
-function FitToMarkers({
+// Draws the vehicle's full route shape in routeColor. Zoom/center tracks
+// just vehicle + user (map stays uncontrolled/defaultCenter, this just
+// nudges it via fitBounds whenever either moves) — the route line is drawn
+// but deliberately NOT fit into view, since it's often much bigger than the
+// vehicle-to-user distance and would zoom out far past what's useful.
+function RouteOverlay({
     vehicle,
     user,
+    path,
+    color,
 }: {
     vehicle: { lat: number; lng: number }
     user: { lat: number; lng: number } | null
+    path: RouteShapePoint[] | null
+    color: string
 }) {
     const map = useMap()
+
     useEffect(() => {
         if (!map) return
         if (!user) {
@@ -56,9 +75,19 @@ function FitToMarkers({
         const bounds = new google.maps.LatLngBounds()
         bounds.extend(vehicle)
         bounds.extend(user)
-        map.fitBounds(bounds, 64) // px padding so markers aren't flush against the edges
+        map.fitBounds(bounds, 64) // px padding so nothing sits flush against the edges
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- vehicle/user are fresh object literals every render; track their primitives instead
     }, [map, vehicle.lat, vehicle.lng, user?.lat, user?.lng])
-    return null
+
+    if (!path?.length) return null
+    return (
+        <Polyline
+            path={path}
+            strokeColor={color}
+            strokeOpacity={0.9}
+            strokeWeight={4}
+        />
+    )
 }
 
 export function VehiclePositionSheet({
@@ -67,11 +96,14 @@ export function VehiclePositionSheet({
     tripId,
     routeName,
     vehicleType,
+    routeColor,
 }: VehiclePositionSheetProps) {
     const { position, loading } = useVehiclePosition(open ? tripId : null)
+    const { path: routePath } = useRouteShape(open ? tripId : null)
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
     const mode = vehicleTypeToStopMode(vehicleType)
-    const iconUrl = STOP_ICON_URL[mode]
+    const iconColor = routeColor ?? STOP_ICON_DEFAULT_COLOR[mode]
+    const iconUrl = buildStopIconUrl(iconColor, STOP_ICON_GLYPH[mode])
     const label = VEHICLE_LABEL[mode]
 
     const [userLocation, setUserLocation] = useState<{
@@ -91,6 +123,21 @@ export function VehiclePositionSheet({
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
         )
     }, [open])
+
+    // Vehicle + user as a bounds literal -> the map's very first frame is
+    // already zoomed to their actual distance apart, instead of opening at a
+    // fixed zoom and snapping to fitBounds a beat later. Deliberately not
+    // sized to the full route (see RouteOverlay) — that'd zoom out to
+    // whatever the route's extent is regardless of how close the bus is.
+    const initialBounds = useMemo(() => {
+        if (!position || !userLocation) return null
+        return {
+            north: Math.max(position.lat, userLocation.lat),
+            south: Math.min(position.lat, userLocation.lat),
+            east: Math.max(position.lng, userLocation.lng),
+            west: Math.min(position.lng, userLocation.lng),
+        }
+    }, [position, userLocation])
 
     return (
         <Drawer open={open} onOpenChange={onOpenChange} dismissible>
@@ -126,11 +173,20 @@ export function VehiclePositionSheet({
                             <APIProvider apiKey={apiKey}>
                                 <Map
                                     className="h-full w-full"
-                                    defaultCenter={{
-                                        lat: position.lat,
-                                        lng: position.lng,
-                                    }}
-                                    defaultZoom={16}
+                                    {...(initialBounds
+                                        ? {
+                                              defaultBounds: {
+                                                  ...initialBounds,
+                                                  padding: 64,
+                                              },
+                                          }
+                                        : {
+                                              defaultCenter: {
+                                                  lat: position.lat,
+                                                  lng: position.lng,
+                                              },
+                                              defaultZoom: 16,
+                                          })}
                                     disableDefaultUI
                                     gestureHandling="greedy"
                                 >
@@ -170,12 +226,14 @@ export function VehiclePositionSheet({
                                             }}
                                         />
                                     )}
-                                    <FitToMarkers
+                                    <RouteOverlay
                                         vehicle={{
                                             lat: position.lat,
                                             lng: position.lng,
                                         }}
                                         user={userLocation}
+                                        path={routePath}
+                                        color={iconColor}
                                     />
                                 </Map>
                             </APIProvider>

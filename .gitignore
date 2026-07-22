@@ -44,3 +44,5 @@ next-env.d.ts
 
 # claude code (local session/tool state, not project source)
 .claude/
+
+/script/google_transit
