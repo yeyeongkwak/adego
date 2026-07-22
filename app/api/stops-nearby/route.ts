@@ -3,7 +3,7 @@
 // Call: GET /api/stops-nearby?lat=-34.93&lng=138.60&radius=600&limit=25
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createPublicClient } from '@/util/supabase/public'
 import { NearbyStop, stopModeFromRouteType } from '@/types/common'
 
 const DEFAULT_RADIUS_M = 600
@@ -49,9 +49,8 @@ export async function GET(req: NextRequest) {
         MAX_LIMIT
     )
 
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-    if (!url || !key) {
+    const supabase = createPublicClient()
+    if (!supabase) {
         return NextResponse.json(
             { error: 'Missing Supabase config.' },
             { status: 500 }
@@ -62,7 +61,6 @@ export async function GET(req: NextRequest) {
     const dLat = radius / 111320
     const dLng = radius / (111320 * Math.cos((lat * Math.PI) / 180))
 
-    const supabase = createClient(url, key, { auth: { persistSession: false } })
     const { data, error } = await supabase
         .from('gtfs_stops')
         .select('stop_id, stop_code, stop_name, stop_lat, stop_lon, route_type')

@@ -6,9 +6,9 @@
 // Call: GET /api/stops-arrivals?stopId=3654
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings'
 import { StopArrival, TRIP_UPDATES_URL } from '@/types/common'
+import { createPublicClient } from '@/util/supabase/public'
 
 export const runtime = 'nodejs'
 
@@ -20,11 +20,9 @@ async function resolveRouteColors(
     const map = new Map<string, string>()
     if (routeIds.length === 0) return map
 
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-    if (!url || !key) return map
+    const supabase = createPublicClient()
+    if (!supabase) return map
 
-    const supabase = createClient(url, key, { auth: { persistSession: false } })
     const { data } = await supabase
         .from('gtfs_routes')
         .select('route_id, route_color')
