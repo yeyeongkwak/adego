@@ -10,12 +10,9 @@ const BATCH = 2000
 let supabase = null
 if (!TEST_MODE) {
     const url = process.env.SUPABASE_URL
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-    console.log(url, key)
+    const key = process.env.SUPABASE_SECRET_KEY
     if (!url || !key) {
-        console.error(
-            'Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY env vars. (Skip with DRY_RUN=1)'
-        )
+        console.error('Missing SUPABASE_URL / SUPABASE_SECRET_KEY env vars.')
         process.exit(1)
     }
     supabase = createClient(url, key, { auth: { persistSession: false } })
@@ -37,7 +34,7 @@ const FILES = [
         'routes.txt',
         'gtfs_routes',
         (r) => ({
-            route_id: s(r.route.id),
+            route_id: s(r.route_id),
             agency_id: s(r.agency_id),
             route_short_name: s(r.route_short_name),
             route_long_name: s(r.route_long_name),
@@ -92,6 +89,16 @@ const FILES = [
             trip_headsign: s(r.trip_headsign),
             direction_id: int(r.direction_id),
             shape_id: s(r.shape_id),
+        }),
+    ],
+    [
+        'shapes.txt',
+        'gtfs_shapes',
+        (r) => ({
+            shape_id: s(r.shape_id),
+            shape_pt_lat: flt(r.shape_pt_lat),
+            shape_pt_lon: flt(r.shape_pt_lon),
+            shape_pt_sequence: int(r.shape_pt_sequence),
         }),
     ],
     [
@@ -170,7 +177,7 @@ async function main() {
     }
     const sec = ((Date.now() - t0) / 1000).toFixed(1)
     console.log(`\nDone (${sec}s)`)
-    if (!DRY_RUN) {
+    if (!TEST_MODE) {
         console.log(`
 Final step -- in the Supabase SQL editor, convert stop coords to geom:
   update gtfs_stops
@@ -187,6 +194,6 @@ main().catch((e) => {
 
 // =====================================================================
 // To re-run, truncate first (SQL editor):
-//   truncate gtfs_stop_times, gtfs_trips, gtfs_calendar_dates,
+//   truncate gtfs_stop_times, gtfs_trips, gtfs_shapes, gtfs_calendar_dates,
 //            gtfs_calendar, gtfs_stops, gtfs_routes restart identity cascade;
 // =====================================================================
