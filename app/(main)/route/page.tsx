@@ -47,7 +47,7 @@ const RouteListPage = ({
         time: 'now',
     })
 
-    const [currentTime, setCurrentTime] = useState(new Date())
+    const [currentTime, setCurrentTime] = useState<Date | null>(null)
 
     const handleOpenOriginSearch = () => {
         setEditingField(RouteSearchType.ORIGIN)
@@ -84,17 +84,22 @@ const RouteListPage = ({
     const { arrivals } = useArrivals(options)
 
     useEffect(() => {
-        const msToNextMinute = 60000 - (Date.now() % 60000)
+        const tick = () => setCurrentTime(new Date())
 
-        const timeout = setTimeout(() => {
-            setCurrentTime(new Date())
-            const interval = setInterval(() => {
-                setCurrentTime(new Date())
-            }, 60000)
-            return () => clearInterval(interval)
+        const immediate = setTimeout(tick, 0)
+
+        const msToNextMinute = 60000 - (Date.now() % 60000)
+        let interval: ReturnType<typeof setInterval> | undefined
+        const aligned = setTimeout(() => {
+            tick()
+            interval = setInterval(tick, 60000)
         }, msToNextMinute)
 
-        return () => clearTimeout(timeout)
+        return () => {
+            clearTimeout(immediate)
+            clearTimeout(aligned)
+            if (interval) clearInterval(interval)
+        }
     }, [])
 
     return (
@@ -179,10 +184,14 @@ const RouteListPage = ({
                             className="bg-white/20 border-white/30 text-white hover:bg-white/90 hover:text-[#002D62] hover:border-white transition-all"
                         >
                             Leave now (
-                            {currentTime.toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                            })}
+                            {currentTime
+                                ? currentTime.toLocaleTimeString('en-AU', {
+                                      hour: 'numeric',
+                                      minute: '2-digit',
+                                      hour12: true,
+                                      timeZone: 'Australia/Adelaide',
+                                  })
+                                : '--:--'}
                             )
                         </Button>
                         <div className="flex items-center gap-2">
