@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings'
 import { Arrival, TRIP_UPDATES_URL } from '@/types/common'
 import { createPublicClient } from '@/util/supabase/public'
+import { scheduledTimeToMs } from '@/util/gtfs/schedule'
 
 export const runtime = 'nodejs'
 
@@ -56,8 +57,38 @@ async function resolveStopIds(
         .select('stop_id, stop_name')
         .in('stop_name', stopNames)
 
-    for (const row of (data ?? []) as any[]) {
+    for (const row of data ?? []) {
         map.set(row.stop_name, row.stop_id)
+    }
+    return map
+}
+
+// ---- Scheduled (trip_id, stop_id) -> timetable arrival/departure ----
+
+async function resolveScheduledTimes(
+    tripIds: string[],
+    stopIds: string[]
+): Promise<Map<string, { arrival: string | null; departure: string | null }>> {
+    const map = new Map<
+        string,
+        { arrival: string | null; departure: string | null }
+    >()
+    if (tripIds.length === 0 || stopIds.length === 0) return map
+
+    const supabase = createPublicClient()
+    if (!supabase) return map
+
+    const { data } = await supabase
+        .from('gtfs_stop_times')
+        .select('trip_id, stop_id, arrival_time, departure_time')
+        .in('trip_id', tripIds)
+        .in('stop_id', stopIds)
+
+    for (const row of (data ?? []) as any[]) {
+        map.set(`${row.trip_id}|${row.stop_id}`, {
+            arrival: row.arrival_time ?? null,
+            departure: row.departure_time ?? null,
+        })
     }
     return map
 }
@@ -116,22 +147,20 @@ export async function GET(req: NextRequest) {
     const now = Date.now()
 
     // 3) For each (stop, route) pair, find the soonest arrival in the feed
-    const arrivals: Arrival[] = stopNames.map((stopName, i) => {
+    type Match = {
+        ms: number
+        feedDelay: number
+        tripId: string | null
+        stopId: string
+        viaArrival: boolean
+    }
+
+    const matches: (Match | null)[] = stopNames.map((stopName, i) => {
         const routeName = routeNames[i]
         const stopId = stopIdMap.get(stopName)
+        if (!stopId) return null
 
-        const empty: Arrival = {
-            stopName,
-            routeName,
-            minutesUntil: null,
-            delaySeconds: null,
-            isRealtime: false,
-            tripId: null,
-        }
-        if (!stopId) return empty
-
-        let best: { ms: number; delay: number; tripId: string | null } | null =
-            null
+        let best: Match | null = null
 
         for (const entity of entities) {
             const tu = entity.tripUpdate
@@ -145,29 +174,78 @@ export async function GET(req: NextRequest) {
                 if (stu.stopId !== stopId) continue
 
                 // arrival.time is a Long -> convert. Fall back to departure.
+                const viaArrival = stu.arrival?.time != null
                 const t = stu.arrival?.time ?? stu.departure?.time
                 if (t == null) continue
 
                 const ms = Number(t) * 1000
                 if (ms < now - 60_000) continue // already gone (>1 min ago)
 
-                const delay = Number(
+                const feedDelay = Number(
                     stu.arrival?.delay ?? stu.departure?.delay ?? 0
                 )
 
                 if (!best || ms < best.ms) {
-                    best = { ms, delay, tripId: tu.trip?.tripId ?? null }
+                    best = {
+                        ms,
+                        feedDelay,
+                        tripId: tu.trip?.tripId ?? null,
+                        stopId,
+                        viaArrival,
+                    }
                 }
             }
         }
 
-        if (!best) return empty
+        return best
+    })
+
+    // 4) Diff the feed's predicted time against the static timetable for the
+    // actual delay -> the feed itself almost never sets StopTimeUpdate.delay.
+    const tripIds = [
+        ...new Set(
+            matches.map((m) => m?.tripId).filter((v): v is string => v != null)
+        ),
+    ]
+    const stopIds = [
+        ...new Set(
+            matches.map((m) => m?.stopId).filter((v): v is string => v != null)
+        ),
+    ]
+    const scheduleMap = await resolveScheduledTimes(tripIds, stopIds)
+
+    const arrivals: Arrival[] = stopNames.map((stopName, i) => {
+        const routeName = routeNames[i]
+        const best = matches[i]
+
+        if (!best) {
+            return {
+                stopName,
+                routeName,
+                minutesUntil: null,
+                delaySeconds: null,
+                isRealtime: false,
+                tripId: null,
+            }
+        }
+
+        let delaySeconds = best.feedDelay
+        if (best.tripId) {
+            const sched = scheduleMap.get(`${best.tripId}|${best.stopId}`)
+            const schedTime = best.viaArrival
+                ? (sched?.arrival ?? sched?.departure)
+                : (sched?.departure ?? sched?.arrival)
+            if (schedTime) {
+                const schedMs = scheduledTimeToMs(schedTime, best.ms)
+                delaySeconds = Math.round((best.ms - schedMs) / 1000)
+            }
+        }
 
         return {
             stopName,
             routeName,
             minutesUntil: Math.max(0, Math.round((best.ms - now) / 60_000)),
-            delaySeconds: best.delay,
+            delaySeconds,
             isRealtime: true,
             tripId: best.tripId,
         }
