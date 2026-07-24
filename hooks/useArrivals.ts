@@ -44,8 +44,7 @@ export function useArrivals(options: IRouteOption[]) {
             return (data.arrivals ?? []) as Arrival[]
         },
         enabled: unique.length > 0,
-        // The feed updates ~every 60s; poll a bit faster so the countdown
-        // doesn't drift too far.
+        // The feed updates ~every 60s; poll a bit faster so the countdown doesn't drift too far.
         refetchInterval: 30_000,
         staleTime: 15_000,
         retry: 1,

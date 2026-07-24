@@ -156,7 +156,7 @@ export function VehiclePositionSheet({
 
                 <div className="h-[60vh] w-full px-4 pb-4">
                     {!apiKey ? (
-                        <div className="flex h-full w-full items-center justify-center rounded-2xl bg-gray-100 text-sm text-gray-500">
+                        <div className="flex h-full w-full items-center justify-center rounded-2xl bg-gray-100 text-sm text-gray-600">
                             Missing NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
                         </div>
                     ) : loading ? (
@@ -164,7 +164,7 @@ export function VehiclePositionSheet({
                             <Spinner className="size-6 text-muted-foreground" />
                         </div>
                     ) : !position ? (
-                        <div className="flex h-full w-full items-center justify-center rounded-2xl bg-gray-100 px-6 text-center text-sm text-gray-500">
+                        <div className="flex h-full w-full items-center justify-center rounded-2xl bg-gray-100 px-6 text-center text-sm text-gray-600">
                             No live position for this {label.toLowerCase()}{' '}
                             right now — it may not have started its trip yet.
                         </div>

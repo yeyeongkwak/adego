@@ -118,7 +118,7 @@ export function RouteCard({ option, isFastest = false, onClick }: Props) {
                             `Departs ${option.departureText ?? ''}`}
                     </span>
                 </div>
-                <span className="max-w-37.5 truncate text-[11px] font-medium text-gray-400">
+                <span className="max-w-37.5 truncate text-[11px] font-medium text-gray-500">
                     {boarding?.departureStopName ?? ''}
                 </span>
             </div>
