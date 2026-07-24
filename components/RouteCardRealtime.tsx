@@ -1,12 +1,11 @@
 // Countdown-first card. The hero number is "minutes until your bus",
 // not a clock time — that's the whole pitch of this app.
-//
 // It also answers the question Google/Metro don't: can you actually
 // make it, given how far you have to walk?
 
 'use client'
 
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import {
     ArrowRight,
@@ -18,6 +17,7 @@ import {
 import type { IRouteOption, ILeg, Arrival } from '@/types/common'
 import { firstTransitLeg, textOnColor } from '@/types/common'
 import { vehicleIcon } from '@/util/transit/vehicleIcon'
+import { clockTimeFromMinutes } from '@/util/time/clockTime'
 import { FastestBadge } from '@/components/FastestBadge'
 import { VehiclePositionSheet } from '@/components/VehiclePositionSheet'
 import { arrivalKey } from '@/hooks/useArrivals'
@@ -39,11 +39,62 @@ type TrackedLeg = {
     routeColor?: string
 }
 
-function totalWalkMinutes(legs: ILeg[]): number {
-    const sec = legs
-        .filter((l) => l.mode === 'WALKING')
-        .reduce((sum, l) => sum + l.durationSec, 0)
+// Walk time to the FIRST bus only — not the whole trip's walking (transfers,
+// final leg to destination). Google splits one logical walk into several
+// consecutive WALKING steps, so this sums all of them up to the first
+// TRANSIT leg rather than just taking the first one. This is what "can you
+// make it" and the walk badge actually mean; summing every WALKING leg in
+// the trip (as this used to) overstated it and could misfire the warning.
+function walkToFirstBusMinutes(legs: ILeg[]): number {
+    let sec = 0
+    for (const leg of legs) {
+        if (leg.mode !== 'WALKING') break
+        sec += leg.durationSec
+    }
     return Math.round(sec / 60)
+}
+
+// Walking seconds immediately BEFORE each TRANSIT leg, aligned index-for-
+// index with legs.filter(l => l.mode === 'TRANSIT'). Index 0 is the walk to
+// the first bus (shown separately, via walkToFirstBusMinutes) — callers
+// rendering per-transfer walk chips should skip it and start at index 1.
+function transferWalkSeconds(legs: ILeg[]): number[] {
+    const result: number[] = []
+    let pendingWalkSec = 0
+    for (const leg of legs) {
+        if (leg.mode === 'WALKING') {
+            pendingWalkSec += leg.durationSec
+        } else {
+            result.push(pendingWalkSec)
+            pendingWalkSec = 0
+        }
+    }
+    return result
+}
+
+// Walking seconds AFTER the last TRANSIT leg — the walk from where you get
+// off to the actual destination, otherwise shown nowhere on the card.
+function finalWalkSeconds(legs: ILeg[]): number {
+    let sec = 0
+    for (let i = legs.length - 1; i >= 0; i--) {
+        if (legs[i].mode !== 'WALKING') break
+        sec += legs[i].durationSec
+    }
+    return sec
+}
+
+// One consistent look for every walk badge on the card (to the first bus,
+// between transfers, or from the last stop to the destination). Small on
+// purpose — this row needs to fit a lot in 2 lines.
+function WalkChip({ minutes }: { minutes: number }) {
+    return (
+        <div className="flex items-center gap-1 rounded-lg border border-gray-100 bg-gray-50 px-2 py-1">
+            <Footprints className="size-3 text-gray-600" />
+            <span className="text-[11px] font-bold text-gray-600">
+                {minutes} min
+            </span>
+        </div>
+    )
 }
 
 // Urgency drives the colour: red = run, amber = hurry, green = relax.
@@ -61,7 +112,12 @@ export function RouteRealTimeCard({
     onClick,
 }: Props) {
     const transitLegs = option.legs.filter((l) => l.mode === 'TRANSIT')
-    const walkMin = totalWalkMinutes(option.legs)
+    const walkMin = walkToFirstBusMinutes(option.legs)
+    const transferWalkSec = transferWalkSeconds(option.legs)
+    const finalWalkMin = Math.round(finalWalkSeconds(option.legs) / 60)
+    // Past ~1 transfer, showing every walk segment risks pushing the row past
+    // 2 lines -> drop them (buses themselves are never hidden) and show "···".
+    const showWalkChips = transitLegs.length <= 2
     const boarding = firstTransitLeg(option)
 
     const hasRealtime = arrival?.isRealtime && arrival.minutesUntil != null
@@ -81,7 +137,7 @@ export function RouteRealTimeCard({
             onClick={onClick}
             className={cn(
                 'relative cursor-pointer gap-0 rounded-3xl border-gray-100 bg-white p-5 shadow-sm transition-all hover:shadow-md active:scale-[0.98]',
-                isFastest && 'ring-2 ring-blue-500'
+                isFastest && 'ring-2 ring-accent'
             )}
         >
             {isFastest && <FastestBadge />}
@@ -106,8 +162,11 @@ export function RouteRealTimeCard({
                                     min
                                 </span>
                                 <span className="ml-1 flex size-2 rounded-full bg-green-500 animate-pulse" />
+                                <span className="ml-1 text-xs font-medium text-gray-600 tabular-nums">
+                                    {clockTimeFromMinutes(mins!)}
+                                </span>
                             </div>
-                            <p className="mt-0.5 text-xs font-medium text-gray-500">
+                            <p className="mt-0.5 text-xs font-medium text-gray-600">
                                 until {boarding?.routeName}
                                 {delayMin > 0 && (
                                     <span className="text-amber-600">
@@ -125,10 +184,10 @@ export function RouteRealTimeCard({
                         </>
                     ) : (
                         <>
-                            <div className="text-3xl font-black tabular-nums text-gray-400">
+                            <div className="text-3xl font-black tabular-nums text-gray-600">
                                 {option.departureText ?? '--'}
                             </div>
-                            <p className="mt-0.5 text-xs font-medium text-gray-400">
+                            <p className="mt-0.5 text-xs font-medium text-gray-600">
                                 scheduled · no live data
                             </p>
                         </>
@@ -136,23 +195,21 @@ export function RouteRealTimeCard({
                 </div>
 
                 <div className="text-right">
-                    <div className="text-sm font-bold text-gray-500">
+                    <div className="text-sm font-bold text-gray-600">
                         arrive {option.arrivalText ?? '--'}
                     </div>
-                    <div className="text-xs font-medium text-gray-400">
+                    <div className="text-xs font-medium text-gray-600">
                         {option.durationText}
                     </div>
                 </div>
             </div>
 
-            {/* ---- Legs: walk + every vehicle (transfers visible) ---- */}
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1.5 rounded-xl border border-gray-100 bg-gray-50 px-3 py-1.5">
-                    <Footprints className="size-3.5 text-gray-500" />
-                    <span className="text-xs font-bold text-gray-600">
-                        {walkMin} min
-                    </span>
-                </div>
+            {/* ---- Legs: walk + every vehicle (transfers visible) ----
+                 Items are flat siblings (not grouped per-leg) so flex-wrap
+                 packs them tightly instead of wrapping a whole leg's group
+                 down together and leaving a gap on the line above. */}
+            <div className="mb-3 flex max-h-16 flex-wrap items-center gap-1.5 overflow-hidden">
+                <WalkChip minutes={walkMin} />
 
                 {transitLegs.map((leg, i) => {
                     const hasColor = !!leg.routeColor
@@ -163,14 +220,23 @@ export function RouteRealTimeCard({
                     const canTrackLeg =
                         legArrival?.isRealtime && !!legArrival.tripId
 
+                    const transferWalkMin =
+                        i > 0 ? Math.round(transferWalkSec[i] / 60) : 0
+
                     return (
-                        <div key={i} className="flex items-center gap-2">
-                            <ArrowRight className="size-3.5 stroke-[3] text-gray-300" />
+                        <Fragment key={i}>
+                            {showWalkChips && transferWalkMin > 0 && (
+                                <>
+                                    <ArrowRight className="size-3 shrink-0 stroke-[3] text-gray-300" />
+                                    <WalkChip minutes={transferWalkMin} />
+                                </>
+                            )}
+                            <ArrowRight className="size-3 shrink-0 stroke-[3] text-gray-300" />
                             <div
                                 className={
                                     hasColor
-                                        ? 'flex items-center gap-1 rounded-xl px-3 py-1.5 shadow-sm'
-                                        : 'flex items-center gap-1 rounded-xl border-2 border-gray-700 bg-white px-3 py-1.5'
+                                        ? 'flex items-center gap-1 rounded-lg px-2 py-1 shadow-sm'
+                                        : 'flex items-center gap-1 rounded-lg border-2 border-gray-700 bg-white px-2 py-1'
                                 }
                                 style={
                                     hasColor
@@ -184,10 +250,10 @@ export function RouteRealTimeCard({
                                 }
                             >
                                 <VehicleIcon
-                                    className={`size-3.5 ${!hasColor ? 'text-gray-700' : ''}`}
+                                    className={`size-3 ${!hasColor ? 'text-gray-700' : ''}`}
                                 />
                                 <span
-                                    className={`text-xs font-black ${!hasColor ? 'text-gray-700' : ''}`}
+                                    className={`text-[11px] font-black ${!hasColor ? 'text-gray-700' : ''}`}
                                 >
                                     {leg.routeName}
                                 </span>
@@ -205,14 +271,26 @@ export function RouteRealTimeCard({
                                             routeColor: leg.routeColor,
                                         })
                                     }}
-                                    className="flex size-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100"
+                                    className="flex size-5 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100"
                                 >
-                                    <MapPin className="size-3.5" />
+                                    <MapPin className="size-3" />
                                 </button>
                             )}
-                        </div>
+                        </Fragment>
                     )
                 })}
+
+                {showWalkChips && finalWalkMin > 0 && (
+                    <>
+                        <ArrowRight className="size-3 shrink-0 stroke-[3] text-gray-300" />
+                        <WalkChip minutes={finalWalkMin} />
+                    </>
+                )}
+                {!showWalkChips && (
+                    <span className="text-xs font-black text-gray-300">
+                        ···
+                    </span>
+                )}
             </div>
 
             {/* ---- Can you make it? (only meaningful with realtime) ---- */}
@@ -239,7 +317,7 @@ export function RouteRealTimeCard({
             )}
 
             <div className="border-t border-gray-50 pt-2">
-                <span className="text-[11px] font-medium text-gray-400">
+                <span className="text-[11px] font-medium text-gray-600">
                     {boarding?.departureStopName ?? ''}
                 </span>
             </div>
