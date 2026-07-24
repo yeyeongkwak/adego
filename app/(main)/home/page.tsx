@@ -11,15 +11,13 @@ import { useNearbyStops } from '@/hooks/useNearbyStops'
 import { useRouteSearchStore } from '@/store/routeSearchStore'
 import type { NearbyStop, SelectedPlace } from '@/types/common'
 
-// Adelaide CBD — 위치 권한이 없거나 실패했을 때의 기본 중심.
+// Adelaide Center(CBD)
 const ADELAIDE = { lat: -34.9285, lng: 138.6007 }
 
 export default function HomePage() {
     // Temporary mock toggle until a real Supabase session check replaces it.
     const [isAuthenticated, setIsAuthenticated] = useState(false)
     const [sheetOpen, setSheetOpen] = useState(true)
-    // 0.5: 검색창 + "Nearby Stops" 제목 다음에 정류장 최소 3개가 잘리지 않고
-    // 보일 만큼의 높이 (0.4였을 땐 1~2개밖에 안 보이는 화면도 있었음).
     const [activeSnapPoint, setActiveSnapPoint] = useState<
         number | string | null
     >(0.5)
@@ -33,21 +31,27 @@ export default function HomePage() {
     // blue "current location" dot doesn't drift when the user pans away.
     const [mapCenter, setMapCenter] = useState(ADELAIDE)
 
+    const getHere = (): Promise<{ lat: number; lng: number } | null> =>
+        new Promise((resolve) => {
+            if (!navigator.geolocation) return resolve(null)
+            navigator.geolocation.getCurrentPosition(
+                (position) =>
+                    resolve({
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude,
+                    }),
+                () => resolve(null),
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+            )
+        })
+
     useEffect(() => {
-        if (!navigator.geolocation) return
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const here = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                }
-                setCenter(here)
-                setMapCenter(here)
-                setLocated(true)
-            },
-            () => {},
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-        )
+        getHere().then((here) => {
+            if (!here) return
+            setCenter(here)
+            setMapCenter(here)
+            setLocated(true)
+        })
     }, [])
 
     const { stops, loading: stopsLoading } = useNearbyStops(mapCenter)
@@ -78,12 +82,40 @@ export default function HomePage() {
         setDestSearchOpen(true)
     }
 
-    const handleDestinationPicked = (destination: SelectedPlace) => {
+    const handleDestinationPicked = async (destination: SelectedPlace) => {
         setDestSearchOpen(false)
+
+        let here = center
+        if (!located) {
+            const fresh = await getHere()
+            if (!fresh) {
+                alert(
+                    'Could not get your current location. Please allow location access and try again.'
+                )
+                return
+            }
+            here = fresh
+            setCenter(fresh)
+            setMapCenter(fresh)
+            setLocated(true)
+        }
+
+        // Same reverse-geocode LocationSearchSheet's "use current location"
+        // does -> the origin pill on /route shows an address, not the literal
+        // string "Current Location".
+        let label = 'Current Location'
+        try {
+            const res = await fetch(
+                `/api/reverse-geocode?lat=${here.lat}&lng=${here.lng}`
+            )
+            const data = await res.json()
+            if (data.address) label = data.address
+        } catch {}
+
         useRouteSearchStore
             .getState()
             .setPendingSearch(
-                { label: 'Current Location', lat: center.lat, lng: center.lng },
+                { label, lat: here.lat, lng: here.lng },
                 destination
             )
         router.push('/route')
