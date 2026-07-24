@@ -113,7 +113,7 @@ export type NearbyStop = {
     name: string // "Currie St"
     lat: number
     lng: number
-    distanceM: number // Distance from the current location, in meters
+    distanceM?: number // Distance from the current location, in meters — only meaningful for a location-based lookup (e.g. /api/stops-nearby), not a name search
     mode: StopMode
 }
 
@@ -154,15 +154,17 @@ export type VehiclePosition = {
     updatedAtSec: number // unix seconds, from the feed's own timestamp
 }
 
-// Next arrivals at a specific stop, regardless of route (for map callouts).
-// Unlike /api/arrivals, this doesn't require knowing the (stop, route) pair up front —
-// just pick a stop and you're done.
-export type StopArrival = {
-    routeName: string
-    routeColor: string | null // "#RRGGBB" from gtfs_routes, null if unset
+// One upcoming departure — either a live GTFS-R match or a scheduled-only fallback from the static timetable.
+export type StopArrivalTime = {
     minutesUntil: number
     delaySeconds: number
     isRealtime: boolean
+}
+
+export type StopArrival = {
+    routeName: string
+    routeColor: string | null // "#RRGGBB" from gtfs_routes, null if unset
+    times: StopArrivalTime[]
 }
 
 export const TRIP_UPDATES_URL =

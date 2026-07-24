@@ -13,6 +13,7 @@ import { Loader2 } from 'lucide-react'
 import type { NearbyStop } from '@/types/common'
 import { useStopArrivals } from '@/hooks/useStopArrivals'
 import { STOP_ICON_URL } from '@/util/map/stopIcons'
+import { arrivalTimeLabel } from '@/util/time/clockTime'
 
 function PanToSelectedStop({ stop }: { stop: NearbyStop | null }) {
     const map = useMap()
@@ -192,37 +193,40 @@ export function HomeMap({
                                     </p>
                                 ) : (
                                     <ul className="space-y-1">
-                                        {arrivals.map((a) => (
-                                            <li
-                                                key={a.routeName}
-                                                className="flex items-center justify-between gap-3"
-                                            >
-                                                <span
-                                                    className="rounded px-1.5 py-0.5 text-xs font-semibold text-white"
-                                                    style={{
-                                                        backgroundColor:
-                                                            a.routeColor ??
-                                                            '#002D62',
-                                                    }}
+                                        {arrivals.map((a) => {
+                                            const soonest = a.times[0]
+                                            return (
+                                                <li
+                                                    key={a.routeName}
+                                                    className="flex items-center justify-between gap-3"
                                                 >
-                                                    {a.routeName}
-                                                </span>
-                                                <span className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
-                                                    {a.isRealtime && (
-                                                        <span
-                                                            className="relative flex size-1.5"
-                                                            title="Live"
-                                                        >
-                                                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
-                                                            <span className="relative inline-flex size-1.5 rounded-full bg-green-500" />
-                                                        </span>
-                                                    )}
-                                                    {a.minutesUntil <= 0
-                                                        ? 'Due'
-                                                        : `${a.minutesUntil} min`}
-                                                </span>
-                                            </li>
-                                        ))}
+                                                    <span
+                                                        className="rounded px-1.5 py-0.5 text-xs font-semibold text-white"
+                                                        style={{
+                                                            backgroundColor:
+                                                                a.routeColor ??
+                                                                '#002D62',
+                                                        }}
+                                                    >
+                                                        {a.routeName}
+                                                    </span>
+                                                    <span className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                                                        {soonest.isRealtime && (
+                                                            <span
+                                                                className="relative flex size-1.5"
+                                                                title="Live"
+                                                            >
+                                                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
+                                                                <span className="relative inline-flex size-1.5 rounded-full bg-green-500" />
+                                                            </span>
+                                                        )}
+                                                        {arrivalTimeLabel(
+                                                            soonest.minutesUntil
+                                                        )}
+                                                    </span>
+                                                </li>
+                                            )
+                                        })}
                                     </ul>
                                 )}
                             </div>
