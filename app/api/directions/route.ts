@@ -167,6 +167,7 @@ export async function GET(req: NextRequest) {
 
         return {
             durationText: formatDuration(route.duration).text,
+            durationSec: formatDuration(route.duration).sec,
             departureText: formatTimeLabel(
                 firstTransit?.stopDetails?.departureTime
             ),

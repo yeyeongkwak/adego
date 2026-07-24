@@ -1,15 +1,24 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
     firstTransitLeg,
+    IRouteOption,
     RouteListScreenProps,
     RouteSearchType,
     RouteTypes,
     SelectedPlace,
     TimeOption,
+    transferCount,
 } from '@/types/common'
-import { ArrowLeft, ArrowRight, ArrowUpDown, RefreshCw } from 'lucide-react'
+import {
+    ArrowLeft,
+    ArrowRight,
+    ArrowUpDown,
+    Clock,
+    RefreshCw,
+    Search,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { LocationSearchSheet } from '@/components/LocationSearchSheet'
@@ -17,14 +26,14 @@ import { useDirections } from '@/hooks/useDirections'
 import { Spinner } from '@/components/ui/spinner'
 import { arrivalKey, useArrivals } from '@/hooks/useArrivals'
 import { RouteRealTimeCard } from '@/components/RouteCardRealtime'
+import { TimePickerSheet } from '@/components/TimePickerSheet'
 import { useRouteSearchStore } from '@/store/routeSearchStore'
 import { cn } from '@/lib/utils/utils'
 
+const TIME_STEP_MINUTES = 15
+
 const RouteListPage = ({
-    origin,
-    destination,
     isAuthenticated = true,
-    onRouteSelect,
     onBack,
     onLoginClick,
 }: RouteListScreenProps) => {
@@ -46,8 +55,16 @@ const RouteListPage = ({
         mode: 'depart',
         time: 'now',
     })
+    const [timePickerOpen, setTimePickerOpen] = useState(false)
+    const [routeType, setRouteType] = useState<RouteTypes>(RouteTypes.FASTEST)
 
-    const [currentTime, setCurrentTime] = useState<Date | null>(null)
+    const shiftTime = (deltaMinutes: number) => {
+        setTimeOption((prev) => {
+            const base = prev.time === 'now' ? new Date() : new Date(prev.time)
+            const next = new Date(base.getTime() + deltaMinutes * 60_000)
+            return { mode: prev.mode, time: next.toISOString() }
+        })
+    }
 
     const handleOpenOriginSearch = () => {
         setEditingField(RouteSearchType.ORIGIN)
@@ -81,29 +98,32 @@ const RouteListPage = ({
         timeOption
     )
 
-    const { arrivals } = useArrivals(options)
+    const isNow = timeOption.time === 'now'
+    const { arrivals } = useArrivals(isNow ? options : [])
 
-    useEffect(() => {
-        const tick = () => setCurrentTime(new Date())
+    const fastestOption = useMemo<IRouteOption | null>(() => {
+        if (options.length === 0) return null
+        return options.reduce((best, o) =>
+            o.durationSec < best.durationSec ? o : best
+        )
+    }, [options])
 
-        const immediate = setTimeout(tick, 0)
-
-        const msToNextMinute = 60000 - (Date.now() % 60000)
-        let interval: ReturnType<typeof setInterval> | undefined
-        const aligned = setTimeout(() => {
-            tick()
-            interval = setInterval(tick, 60000)
-        }, msToNextMinute)
-
-        return () => {
-            clearTimeout(immediate)
-            clearTimeout(aligned)
-            if (interval) clearInterval(interval)
+    const displayedOptions = useMemo(() => {
+        const sorted = [...options]
+        if (routeType === RouteTypes.LEAST_TRANSFER) {
+            sorted.sort(
+                (a, b) =>
+                    transferCount(a) - transferCount(b) ||
+                    a.durationSec - b.durationSec
+            )
+        } else {
+            sorted.sort((a, b) => a.durationSec - b.durationSec)
         }
-    }, [])
+        return sorted
+    }, [options, routeType])
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col">
+        <div className="h-full bg-gray-50 flex flex-col">
             <div className="bg-[#002D62] text-white sticky top-0 z-10 shadow-md">
                 <div className="px-4 py-4">
                     <div className="flex items-center gap-3 mb-4">
@@ -177,35 +197,71 @@ const RouteListPage = ({
                     </Card>
 
                     {/* Time Controls */}
-                    <div className="flex items-center justify-between mt-4">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="bg-white/20 border-white/30 text-white hover:bg-white/90 hover:text-[#002D62] hover:border-white transition-all"
-                        >
-                            Leave now (
-                            {currentTime
-                                ? currentTime.toLocaleTimeString('en-AU', {
-                                      hour: 'numeric',
-                                      minute: '2-digit',
-                                      hour12: true,
-                                      timeZone: 'Australia/Adelaide',
-                                  })
-                                : '--:--'}
-                            )
-                        </Button>
-                        <div className="flex items-center gap-2">
+                    <div className="mt-4 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-1">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                    setTimeOption({
+                                        mode: 'depart',
+                                        time: 'now',
+                                    })
+                                }
+                                className={cn(
+                                    'text-white transition-all hover:bg-white/90 hover:text-[#002D62]',
+                                    isNow
+                                        ? 'border-white/30 bg-white/20'
+                                        : 'border-transparent bg-transparent text-white/70'
+                                )}
+                            >
+                                Leave now
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size={isNow ? 'icon' : 'sm'}
+                                aria-label="Choose departure or arrival time"
+                                onClick={() => setTimePickerOpen(true)}
+                                className={cn(
+                                    'text-white transition-all hover:bg-white/90 hover:text-[#002D62]',
+                                    isNow
+                                        ? 'border-transparent bg-transparent'
+                                        : 'border-white/30 bg-white/20'
+                                )}
+                            >
+                                <Clock className="size-4 shrink-0" />
+                                {!isNow && (
+                                    <span className="truncate text-sm font-medium whitespace-nowrap">
+                                        {new Date(
+                                            timeOption.time
+                                        ).toLocaleTimeString('en-AU', {
+                                            hour: 'numeric',
+                                            minute: '2-digit',
+                                            hour12: true,
+                                            timeZone: 'Australia/Adelaide',
+                                        })}
+                                    </span>
+                                )}
+                            </Button>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
                             <Button
                                 variant="ghost"
                                 size="icon"
+                                aria-label={`${TIME_STEP_MINUTES} min earlier`}
+                                onClick={() => shiftTime(-TIME_STEP_MINUTES)}
                                 className="text-white hover:bg-white/90 hover:text-[#002D62] transition-all"
                             >
                                 <ArrowLeft className="size-4" />
                             </Button>
-                            <span className="text-sm font-medium">15 min</span>
+                            <span className="text-sm font-medium whitespace-nowrap">
+                                {TIME_STEP_MINUTES}m
+                            </span>
                             <Button
                                 variant="ghost"
                                 size="icon"
+                                aria-label={`${TIME_STEP_MINUTES} min later`}
+                                onClick={() => shiftTime(TIME_STEP_MINUTES)}
                                 className="text-white hover:bg-white/90 hover:text-[#002D62] transition-all"
                             >
                                 <ArrowRight className="size-4" />
@@ -215,43 +271,91 @@ const RouteListPage = ({
                 </div>
             </div>
 
+            {/* Fastest / fewest-transfers tabs */}
+
+            {displayedOptions.length > 0 && (
+                <div className="flex gap-2 px-4 pt-4">
+                    <button
+                        type="button"
+                        onClick={() => setRouteType(RouteTypes.FASTEST)}
+                        className={cn(
+                            'flex-1 rounded-full py-2 text-sm font-semibold transition-colors',
+                            routeType === RouteTypes.FASTEST
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-gray-100 text-gray-600'
+                        )}
+                    >
+                        Fastest
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setRouteType(RouteTypes.LEAST_TRANSFER)}
+                        className={cn(
+                            'flex-1 rounded-full py-2 text-sm font-semibold transition-colors',
+                            routeType === RouteTypes.LEAST_TRANSFER
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-gray-100 text-gray-600'
+                        )}
+                    >
+                        Fewest transfers
+                    </button>
+                </div>
+            )}
+
             {/* Route list section */}
-            <div className="p-4 space-y-4">
+            <div className="flex flex-1 flex-col p-4">
                 {loading && (
                     <div className="flex justify-center py-12">
                         <Spinner className="size-6 text-muted-foreground" />
+                    </div>
+                )}
+                {!loading && (!selectedOrigin || !selectedDestination) && (
+                    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+                        <Search className="size-8 text-gray-300" />
+                        <p className="text-sm text-gray-500">
+                            Please select departure or destination for route
+                            search.
+                        </p>
                     </div>
                 )}
 
                 {!loading &&
                     selectedOrigin &&
                     selectedDestination &&
-                    (options.length === 0 ? (
+                    (displayedOptions.length === 0 ? (
                         <p className="py-12 text-center text-sm text-gray-500">
                             {error ?? 'No route is available for this trip.'}
                         </p>
                     ) : (
-                        options.map((option, i) => {
-                            const boarding = firstTransitLeg(option)
-                            const arrival = arrivals.get(
-                                arrivalKey(
-                                    boarding?.departureStopName,
-                                    boarding?.routeName
+                        <div className="space-y-4">
+                            {displayedOptions.map((option, i) => {
+                                const boarding = firstTransitLeg(option)
+                                const arrival = arrivals.get(
+                                    arrivalKey(
+                                        boarding?.departureStopName,
+                                        boarding?.routeName
+                                    )
                                 )
-                            )
-                            return (
-                                <RouteRealTimeCard
-                                    key={i}
-                                    option={option}
-                                    arrival={arrival}
-                                    arrivals={arrivals}
-                                    isFastest={i === 0}
-                                    onClick={() => {}}
-                                />
-                            )
-                        })
+                                return (
+                                    <RouteRealTimeCard
+                                        key={i}
+                                        option={option}
+                                        arrival={arrival}
+                                        arrivals={arrivals}
+                                        isFastest={option === fastestOption}
+                                        onClick={() => {}}
+                                    />
+                                )
+                            })}
+                        </div>
                     ))}
             </div>
+            <TimePickerSheet
+                open={timePickerOpen}
+                onOpenChange={setTimePickerOpen}
+                value={timeOption}
+                onApply={setTimeOption}
+            />
             {searchSheetOpen && (
                 <LocationSearchSheet
                     isOpen={searchSheetOpen}

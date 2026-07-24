@@ -37,6 +37,7 @@ export interface ILeg {
 // ---- One route option = One card -----
 export interface IRouteOption {
     durationText: string // "23 mins"  (total duration)
+    durationSec: number // From Google's route.duration the sorting key for "Fastest"
     departureText?: string // "4:51 PM"
     departureValue?: number // Unix seconds
     arrivalText?: string // "5:40 PM"
@@ -82,10 +83,7 @@ export function transferCount(option: IRouteOption): number {
 // Component props
 // =====================================================================
 export interface RouteListScreenProps {
-    origin: SelectedPlace | null
-    destination: SelectedPlace | null
     isAuthenticated: boolean
-    onRouteSelect: (index: number) => void
     onBack: () => void
     onLoginClick: () => void
 }
