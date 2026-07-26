@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { BusFront, Home, Star, Route, Settings } from 'lucide-react'
 
-export type NavTab = 'home' | 'favorite' | 'routePlan' | 'stops' | 'settings'
+export type NavTab = 'home' | 'favorite' | 'routePlan' | 'stops'
+// | 'settings'
 
 const items: {
     id: NavTab
@@ -16,7 +17,7 @@ const items: {
     { id: 'favorite', label: 'Favorite', icon: Star, href: '/favorite' },
     { id: 'routePlan', label: 'Route Plan', icon: Route, href: '/route' },
     { id: 'stops', label: 'Stops', icon: BusFront, href: '/stops' },
-    { id: 'settings', label: 'Settings', icon: Settings, href: '/settings' },
+    // { id: 'settings', label: 'Settings', icon: Settings, href: '/settings' },
 ]
 
 export function Footer() {
@@ -26,7 +27,7 @@ export function Footer() {
         // z-[60]: vaul Drawer(HomeSheet)가 document.body에 포탈되어 fixed z-50으로
         // 뷰포트 맨 아래까지 깔리는데, Footer는 그 위에 항상 보여야 하므로 더 높게.
         <nav className="sticky bottom-0 z-[60] w-full bg-white border-t border-gray-200 pb-[env(safe-area-inset-bottom)]">
-            <div className="grid grid-cols-5">
+            <div className="grid grid-cols-4">
                 {items.map(({ id, label, icon: Icon, href }) => {
                     const isActive =
                         pathname === href || pathname.startsWith(`${href}/`)

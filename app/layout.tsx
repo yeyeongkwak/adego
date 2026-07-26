@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
 import { ReactNode } from 'react'
+import { Analytics } from '@vercel/analytics/next'
 
 const geistSans = Geist({
     variable: '--font-geist-sans',
@@ -16,8 +17,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
     title: {
-        default: 'Adego Beep',
-        template: '%s | Adego Beep',
+        default: 'Adelaide Go Beep',
+        template: '%s | Adelaide Go Beep',
     },
     description:
         'Accurate real-time bus arrivals for Adelaide public transport',
@@ -41,6 +42,7 @@ export default function RootLayout({
         >
             <body className="min-h-full flex flex-col">
                 <Providers>{children}</Providers>
+                <Analytics />
             </body>
         </html>
     )
