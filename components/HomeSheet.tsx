@@ -164,7 +164,7 @@ export function HomeSheet({
             disablePreventScroll
         >
             <DrawerContent
-                className="mx-auto max-w-md max-h-[90vh]"
+                className="mx-auto max-w-md data-[vaul-drawer-direction=bottom]:mt-0 data-[vaul-drawer-direction=bottom]:max-h-[90vh]"
                 onPointerDownOutside={() => onOpenChange(false)}
             >
                 <DrawerTitle className="sr-only">Where to?</DrawerTitle>

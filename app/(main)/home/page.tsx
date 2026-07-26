@@ -25,6 +25,20 @@ export default function HomePage() {
     const [center, setCenter] = useState(ADELAIDE)
     const [located, setLocated] = useState(false)
 
+    // Restoring this page from the back-forward cache (e.g. hitting Back
+    // from a 404) resumes the frozen page instead of remounting it — but
+    // Google Maps' WebGL canvas can come back blank since nothing tells it
+    // to redraw. Bumping this key forces HomeMap to fully remount whenever
+    // that happens.
+    const [mapMountKey, setMapMountKey] = useState(0)
+    useEffect(() => {
+        const handlePageShow = (e: PageTransitionEvent) => {
+            if (e.persisted) setMapMountKey((k) => k + 1)
+        }
+        window.addEventListener('pageshow', handlePageShow)
+        return () => window.removeEventListener('pageshow', handlePageShow)
+    }, [])
+
     // Follows wherever the user is currently looking at on the map (starts at
     // `center`, then moves on pan/zoom). Nearby stops are fetched for this,
     // not for `center` — `center` stays pinned to the actual GPS fix so the
@@ -125,6 +139,7 @@ export default function HomePage() {
         // 모바일 폭(max-w-md) 앱 셸은 (main)/layout.tsx가 제공 — 여기선 그 안을 꽉 채우기만.
         <div className="relative h-full w-full overflow-hidden bg-gray-50">
             <HomeMap
+                key={mapMountKey}
                 center={center}
                 located={located}
                 stops={stops}
