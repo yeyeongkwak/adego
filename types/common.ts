@@ -17,6 +17,7 @@ export type SelectedPlace = {
     address?: string // Address (from favorites, etc.)
     lat: number // NOTE: always number — mixing in strings causes calculation bugs
     lng: number
+    placeId?: string // Google place_id, when resolved via autocomplete — stable key for matching favorites (falls back to label when absent, e.g. current-location picks)
 }
 
 // ---- A single leg of a route — one Google step ----------------------
@@ -24,6 +25,7 @@ export interface ILeg {
     mode: 'WALKING' | 'TRANSIT'
     durationText: string // "12 mins"
     durationSec: number
+    path: { lat: number; lng: number }[] // This leg's own polyline segment — for zooming the route detail map into just one leg
     // Only populated when mode is TRANSIT ↓
     routeName?: string // "801" / "Glenelg" — realtime matching key + display label
     routeColor?: string // "#RRGGBB"
@@ -41,6 +43,7 @@ export interface IRouteOption {
     departureText?: string // "4:51 PM"
     departureValue?: number // Unix seconds
     arrivalText?: string // "5:40 PM"
+    path: { lat: number; lng: number }[] // Whole-journey polyline (walking + transit combined), decoded from Google's route.polyline
     legs: ILeg[] // Walking, bus, and transfers all included
 }
 
@@ -77,15 +80,6 @@ export function firstWalkLeg(option: IRouteOption): ILeg | undefined {
 export function transferCount(option: IRouteOption): number {
     const transit = option.legs.filter((l) => l.mode === 'TRANSIT').length
     return Math.max(0, transit - 1)
-}
-
-// =====================================================================
-// Component props
-// =====================================================================
-export interface RouteListScreenProps {
-    isAuthenticated: boolean
-    onBack: () => void
-    onLoginClick: () => void
 }
 
 export type Prediction = {

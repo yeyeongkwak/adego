@@ -199,7 +199,7 @@ export function RouteRealTimeCard({
                         arrive {option.arrivalText ?? '--'}
                     </div>
                     <div className="text-xs font-medium text-gray-600">
-                        {option.durationText}
+                        {option.durationText} total
                     </div>
                 </div>
             </div>

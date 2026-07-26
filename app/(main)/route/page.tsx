@@ -1,10 +1,9 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
     firstTransitLeg,
     IRouteOption,
-    RouteListScreenProps,
     RouteSearchType,
     RouteTypes,
     SelectedPlace,
@@ -21,22 +20,23 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { PageHeader } from '@/components/PageHeader'
 import { LocationSearchSheet } from '@/components/LocationSearchSheet'
 import { useDirections } from '@/hooks/useDirections'
 import { Spinner } from '@/components/ui/spinner'
 import { arrivalKey, useArrivals } from '@/hooks/useArrivals'
 import { RouteRealTimeCard } from '@/components/RouteCardRealtime'
+import { RouteDetailSheet } from '@/components/RouteDetailSheet'
 import { TimePickerSheet } from '@/components/TimePickerSheet'
 import { useRouteSearchStore } from '@/store/routeSearchStore'
 import { cn } from '@/lib/utils/utils'
 
 const TIME_STEP_MINUTES = 15
 
-const RouteListPage = ({
-    isAuthenticated = true,
-    onBack,
-    onLoginClick,
-}: RouteListScreenProps) => {
+const RouteListPage = () => {
+    const [detailOption, setDetailOption] = useState<IRouteOption | null>(
+        null
+    )
     const [searchSheetOpen, setSearchSheetOpen] = useState(false)
     const [editingField, setEditingField] = useState<RouteSearchType | null>(
         null
@@ -50,6 +50,34 @@ const RouteListPage = ({
     )
     const [selectedDestination, setSelectedDestination] =
         useState<SelectedPlace | null>(initialSearch.destination)
+
+    // Visiting /route directly (refresh, bookmark, etc. — no pending search
+    // handoff from Home) used to leave origin empty until manually picked.
+    // Home's "Where to" flow already defaults it to current location, so do
+    // the same here for consistency. Only fires once at mount, and only
+    // when origin is still unset; on denial/failure it just leaves the
+    // "Select Origin" placeholder rather than guessing.
+    useEffect(() => {
+        if (selectedOrigin || !navigator.geolocation) return
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const lat = position.coords.latitude
+                const lng = position.coords.longitude
+                let label = 'Current Location'
+                try {
+                    const res = await fetch(
+                        `/api/reverse-geocode?lat=${lat}&lng=${lng}`
+                    )
+                    const data = await res.json()
+                    if (data.address) label = data.address
+                } catch {}
+                setSelectedOrigin({ label, lat, lng })
+            },
+            () => {},
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+        )
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- run once at mount only; selectedOrigin is read purely as an at-mount guard, not something this should re-run for
+    }, [])
 
     const [timeOption, setTimeOption] = useState<TimeOption>({
         mode: 'depart',
@@ -126,34 +154,26 @@ const RouteListPage = ({
         <div className="h-full bg-gray-50 flex flex-col">
             <div className="bg-[#002D62] text-white sticky top-0 z-10 shadow-md">
                 <div className="px-4 py-4">
-                    <div className="flex items-center gap-3 mb-4">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={onBack}
-                            className="text-white hover:bg-white/90 hover:text-[#002D62] transition-all"
-                        >
-                            <ArrowLeft className="size-5" />
-                        </Button>
-                        <div className="flex-1">
-                            <h1 className="font-semibold text-xl tracking-tight">
-                                Route Options
-                            </h1>
-                        </div>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            disabled={refreshing}
-                            className="text-white hover:bg-white/90 hover:text-[#002D62] transition-all"
-                            onClick={() => refetch()}
-                        >
-                            <RefreshCw
-                                className={cn(
-                                    'size-5',
-                                    refreshing && 'animate-spin'
-                                )}
-                            />
-                        </Button>
+                    <div className="mb-4">
+                        <PageHeader
+                            title="Route Options"
+                            right={
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    disabled={refreshing}
+                                    className="text-white hover:bg-white/90 hover:text-[#002D62] transition-all"
+                                    onClick={() => refetch()}
+                                >
+                                    <RefreshCw
+                                        className={cn(
+                                            'size-5',
+                                            refreshing && 'animate-spin'
+                                        )}
+                                    />
+                                </Button>
+                            }
+                        />
                     </div>
 
                     {/* Origin & Destination */}
@@ -343,7 +363,9 @@ const RouteListPage = ({
                                         arrival={arrival}
                                         arrivals={arrivals}
                                         isFastest={option === fastestOption}
-                                        onClick={() => {}}
+                                        onClick={() =>
+                                            setDetailOption(option)
+                                        }
                                     />
                                 )
                             })}
@@ -355,6 +377,12 @@ const RouteListPage = ({
                 onOpenChange={setTimePickerOpen}
                 value={timeOption}
                 onApply={setTimeOption}
+            />
+            <RouteDetailSheet
+                option={detailOption}
+                onClose={() => setDetailOption(null)}
+                originLabel={selectedOrigin?.label}
+                destinationLabel={selectedDestination?.label}
             />
             {searchSheetOpen && (
                 <LocationSearchSheet
@@ -368,9 +396,7 @@ const RouteListPage = ({
                             ? 'Select Origin'
                             : 'Select Destination'
                     }
-                    isAuthenticated={isAuthenticated}
                     onLocationSelect={handleLocationSelect}
-                    onLoginClick={onLoginClick}
                 />
             )}
         </div>

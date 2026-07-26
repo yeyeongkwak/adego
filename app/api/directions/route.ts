@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { IRouteOption } from '@/types/common'
 import { createPublicClient } from '@/util/supabase/public'
+import { decodePolyline } from '@/util/map/decodePolyline'
+import { formatDurationText } from '@/util/time/duration'
 
 const ADELAIDE_TZ = 'Australia/Adelaide'
 
@@ -10,12 +12,7 @@ const formatDuration = (
     durationField?: string
 ): { text: string; sec: number } => {
     const sec = durationField ? Math.round(parseFloat(durationField)) : 0
-    const mins = Math.round(sec / 60)
-    if (mins < 60) return { text: `${mins} min${mins === 1 ? '' : 's'}`, sec }
-    const h = Math.floor(mins / 60)
-    const m = mins % 60
-    const text = m === 0 ? `${h} hr${h === 1 ? '' : 's'}` : `${h} hr ${m} min`
-    return { text, sec }
+    return { text: formatDurationText(sec), sec }
 }
 
 const formatTimeLabel = (iso?: string): string | undefined => {
@@ -30,9 +27,12 @@ const formatTimeLabel = (iso?: string): string | undefined => {
 
 const toLeg = (step: any) => {
     const { text, sec } = formatDuration(step.staticDuration)
+    const path = step.polyline?.encodedPolyline
+        ? decodePolyline(step.polyline.encodedPolyline)
+        : []
 
     if (step.travelMode === 'WALK') {
-        return { mode: 'WALKING', durationText: text, durationSec: sec }
+        return { mode: 'WALKING', durationText: text, durationSec: sec, path }
     }
 
     const td = step.transitDetails ?? {}
@@ -40,6 +40,7 @@ const toLeg = (step: any) => {
         mode: 'TRANSIT',
         durationText: text,
         durationSec: sec,
+        path,
         routeName: td.transitLine?.nameShort ?? td.transitLine?.name,
         routeColor: td.transitLine?.color, // fallback; overridden by gtfs_routes below when available
         vehicleType: td.transitLine?.vehicle?.type,
@@ -128,7 +129,7 @@ export async function GET(req: NextRequest) {
                     'X-Goog-Api-Key': apiKey,
                     // Only ask for the fields we render -> cheaper + smaller response.
                     'X-Goog-FieldMask':
-                        'routes.duration,routes.legs.steps.travelMode,routes.legs.steps.staticDuration,routes.legs.steps.transitDetails',
+                        'routes.duration,routes.polyline.encodedPolyline,routes.legs.steps.travelMode,routes.legs.steps.staticDuration,routes.legs.steps.transitDetails,routes.legs.steps.polyline.encodedPolyline',
                 },
                 body: JSON.stringify(body),
             }
@@ -157,13 +158,29 @@ export async function GET(req: NextRequest) {
 
     const options: IRouteOption[] = data.routes.map((route: any) => {
         const leg = route.legs[0] // A→B 단일 구간 여정이라 legs[0]
-        const steps = (leg.steps ?? []).map(toLeg)
-        const transitSteps = (leg.steps ?? []).filter(
-            (s: any) => s.transitDetails
-        )
+        const stepsRaw = leg.steps ?? []
+        const steps = stepsRaw.map(toLeg)
+        const transitSteps = stepsRaw.filter((s: any) => s.transitDetails)
         const firstTransit = transitSteps[0]?.transitDetails
         const lastTransit =
             transitSteps[transitSteps.length - 1]?.transitDetails
+
+        let finalWalkSec = 0
+        for (
+            let i = stepsRaw.length - 1;
+            i >= 0 && stepsRaw[i].travelMode === 'WALK';
+            i--
+        ) {
+            finalWalkSec += Math.round(
+                parseFloat(stepsRaw[i].staticDuration ?? '0')
+            )
+        }
+        const arrivalIso = lastTransit?.stopDetails?.arrivalTime
+            ? new Date(
+                  new Date(lastTransit.stopDetails.arrivalTime).getTime() +
+                      finalWalkSec * 1000
+              ).toISOString()
+            : undefined
 
         return {
             durationText: formatDuration(route.duration).text,
@@ -178,7 +195,10 @@ export async function GET(req: NextRequest) {
                       ).getTime() / 1000
                   )
                 : undefined,
-            arrivalText: formatTimeLabel(lastTransit?.stopDetails?.arrivalTime),
+            arrivalText: formatTimeLabel(arrivalIso),
+            path: route.polyline?.encodedPolyline
+                ? decodePolyline(route.polyline.encodedPolyline)
+                : [],
             legs: steps,
         }
     })
