@@ -1,5 +1,6 @@
 import React from 'react'
 import { Footer } from '@/components/ui/footer'
+import { ReportIssueButton } from '@/components/ReportIssueButton'
 
 const HomeLayout = ({ children }: { children: React.ReactNode }) => {
     return (
@@ -9,9 +10,10 @@ const HomeLayout = ({ children }: { children: React.ReactNode }) => {
         // has an actual pixel height, and the h-full chain (map, etc.) inside it is rendered correctly.
 
         <div className="min-h-dvh bg-gray-200">
-            <div className="mx-auto flex h-dvh w-full max-w-md flex-col bg-gray-50 shadow-xl">
+            <div className="relative mx-auto flex h-dvh w-full max-w-md flex-col bg-gray-50 shadow-xl">
                 <main className="flex-1 overflow-y-auto">{children}</main>
                 <Footer />
+                <ReportIssueButton />
             </div>
         </div>
     )
