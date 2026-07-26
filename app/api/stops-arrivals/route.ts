@@ -1,19 +1,10 @@
-// Next few buses at ONE stop, every route that serves it — for the map's
-// stop popup and the Stops tab. Merges the realtime feed (live ETA + delay)
-// with the static timetable (gtfs_stop_times) so a route with no current
-// live match still shows its next scheduled time instead of disappearing.
-//
-// Known simplification: only gtfs_calendar's day-of-week is checked, not
-// gtfs_calendar_dates exceptions (public holidays / one-off service
-// changes) — handling those properly is a bigger separate pass.
-
 // Call: GET /api/stops-arrivals?stopId=3654
 
 import { NextRequest, NextResponse } from 'next/server'
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings'
 import { StopArrival, TRIP_UPDATES_URL } from '@/types/common'
 import { createPublicClient } from '@/util/supabase/public'
-import { adelaideServiceDay, scheduledTimeToMs } from '@/util/gtfs/schedule'
+import { adelaideParts, gtfsTimeString } from '@/util/gtfs/schedule'
 
 export const runtime = 'nodejs'
 
@@ -33,18 +24,16 @@ async function resolveRouteColors(
         .select('route_id, route_color')
         .in('route_id', routeIds)
 
-    for (const row of (data ?? []) as any[]) {
+    for (const row of data ?? []) {
         if (row.route_color) map.set(row.route_id, `#${row.route_color}`)
     }
     return map
 }
 
-// Separate in-memory cache from /api/arrivals's — different route module,
-// not worth sharing across the two for this feed's size/TTL.
 let feedCache: { at: number; entities: any[] } | null = null
 const FEED_TTL_MS = 30_000
 
-async function getFeed(): Promise<any[]> {
+async function getFeed() {
     if (feedCache && Date.now() - feedCache.at < FEED_TTL_MS) {
         return feedCache.entities
     }
@@ -62,16 +51,20 @@ async function getFeed(): Promise<any[]> {
     return entities
 }
 
-// Every trip due at this stop today, per the static timetable — regardless
-// of whether the realtime feed currently has a live update for it.
 async function todaysScheduledTrips(
     stopId: string,
-    referenceMs: number
-): Promise<{ tripId: string; routeId: string; ms: number }[]> {
+    referenceMs: number,
+    windowMinutes?: number
+): Promise<{
+    trips: { tripId: string; routeId: string; ms: number }[]
+    hasMore: boolean
+}> {
     const supabase = createPublicClient()
-    if (!supabase) return []
+    if (!supabase) return { trips: [], hasMore: false }
 
-    const { dateStr, dayColumn } = adelaideServiceDay(referenceMs)
+    const { dateStr, dayColumn, secondsSinceMidnight } =
+        adelaideParts(referenceMs)
+    const midnightMs = referenceMs - secondsSinceMidnight * 1000
 
     const { data: calendarRows } = await supabase
         .from('gtfs_calendar')
@@ -83,42 +76,82 @@ async function todaysScheduledTrips(
     const serviceIds = new Set(
         (calendarRows ?? []).map((r: any) => r.service_id as string)
     )
-    if (serviceIds.size === 0) return []
+    if (serviceIds.size === 0) return { trips: [], hasMore: false }
 
-    const { data: stopTimeRows } = await supabase
+    let toStr: string | null = null
+    let stopTimesQuery = supabase
         .from('gtfs_stop_times')
         .select('trip_id, arrival_time, departure_time')
         .eq('stop_id', stopId)
 
-    if (!stopTimeRows?.length) return []
+    if (windowMinutes != null) {
+        const toSec = secondsSinceMidnight + windowMinutes * 60
+        const fromStr = gtfsTimeString(secondsSinceMidnight)
+        toStr = gtfsTimeString(toSec)
+        stopTimesQuery = stopTimesQuery.or(
+            `and(arrival_time.gte.${fromStr},arrival_time.lte.${toStr}),and(departure_time.gte.${fromStr},departure_time.lte.${toStr})`
+        )
+    }
 
-    const tripIds = [
-        ...new Set(stopTimeRows.map((r: any) => r.trip_id as string)),
-    ]
-
-    const { data: tripRows } = await supabase
-        .from('gtfs_trips')
-        .select('trip_id, route_id, service_id')
-        .in('trip_id', tripIds)
-
-    const tripInfo = new Map(
-        (tripRows ?? []).map((t: any) => [t.trip_id as string, t])
-    )
+    const { data: stopTimeRows } = await stopTimesQuery
 
     const results: { tripId: string; routeId: string; ms: number }[] = []
-    for (const row of stopTimeRows as any[]) {
-        const trip = tripInfo.get(row.trip_id)
-        if (!trip?.route_id || !serviceIds.has(trip.service_id)) continue
+    if (stopTimeRows?.length) {
+        const tripIds = [
+            ...new Set(stopTimeRows.map((r: any) => r.trip_id as string)),
+        ]
 
-        const timeStr = row.arrival_time ?? row.departure_time
-        if (!timeStr) continue
+        const { data: tripRows } = await supabase
+            .from('gtfs_trips')
+            .select('trip_id, route_id, service_id')
+            .in('trip_id', tripIds)
 
-        const ms = scheduledTimeToMs(timeStr, referenceMs)
-        if (ms < referenceMs - 60_000) continue // already gone
+        const tripInfo = new Map(
+            (tripRows ?? []).map((t: any) => [t.trip_id as string, t])
+        )
 
-        results.push({ tripId: row.trip_id, routeId: trip.route_id, ms })
+        for (const row of stopTimeRows as any[]) {
+            const trip = tripInfo.get(row.trip_id)
+            if (!trip?.route_id || !serviceIds.has(trip.service_id)) continue
+
+            const timeStr = row.arrival_time ?? row.departure_time
+            if (!timeStr) continue
+
+            const [h, m, s] = timeStr.split(':').map(Number)
+            const ms = midnightMs + (h * 3600 + m * 60 + s) * 1000
+            if (ms < referenceMs - 60_000) continue
+
+            results.push({ tripId: row.trip_id, routeId: trip.route_id, ms })
+        }
     }
-    return results
+
+    let hasMore = false
+    if (toStr) {
+        const windowedRouteIds = new Set(results.map((r) => r.routeId))
+        const { data: beyondRows } = await supabase
+            .from('gtfs_stop_times')
+            .select('trip_id')
+            .eq('stop_id', stopId)
+            .or(`arrival_time.gt.${toStr},departure_time.gt.${toStr}`)
+            .limit(20)
+
+        const beyondTripIds = [
+            ...new Set((beyondRows ?? []).map((r: any) => r.trip_id as string)),
+        ]
+        if (beyondTripIds.length > 0) {
+            const { data: beyondTrips } = await supabase
+                .from('gtfs_trips')
+                .select('route_id, service_id')
+                .in('trip_id', beyondTripIds)
+            hasMore = (beyondTrips ?? []).some(
+                (t: any) =>
+                    serviceIds.has(t.service_id) &&
+                    !windowedRouteIds.has(t.route_id)
+            )
+        }
+    }
+
+    return { trips: results, hasMore }
 }
 
 export async function GET(req: NextRequest) {
@@ -130,10 +163,19 @@ export async function GET(req: NextRequest) {
         )
     }
 
+    const withinMinutesParam = req.nextUrl.searchParams.get('withinMinutes')
+    const withinMinutes = withinMinutesParam
+        ? parseInt(withinMinutesParam, 10)
+        : undefined
+
     const now = Date.now()
 
     // 1) Static timetable: every trip due here today, live or not.
-    const trips = await todaysScheduledTrips(stopId, now)
+    const { trips, hasMore } = await todaysScheduledTrips(
+        stopId,
+        now,
+        withinMinutes
+    )
 
     // 2) Realtime feed: live time + delay, keyed by trip_id.
     let entities: any[] = []
@@ -178,6 +220,8 @@ export async function GET(req: NextRequest) {
 
         const live = liveByTrip.get(tripId)
         if (!live) continue
+        if (withinMinutes != null && live.ms > now + withinMinutes * 60_000)
+            continue
         trips.push({ tripId, routeId, ms: live.ms })
     }
 
@@ -228,5 +272,5 @@ export async function GET(req: NextRequest) {
         })),
     }))
 
-    return NextResponse.json({ arrivals })
+    return NextResponse.json({ arrivals, hasMore })
 }

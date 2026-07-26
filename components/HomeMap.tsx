@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
     APIProvider,
     InfoWindow,
@@ -10,10 +10,24 @@ import {
 } from '@vis.gl/react-google-maps'
 import type { MapEvent } from '@vis.gl/react-google-maps'
 import { Loader2 } from 'lucide-react'
-import type { NearbyStop } from '@/types/common'
+import type { NearbyStop, StopArrivalTime } from '@/types/common'
 import { useStopArrivals } from '@/hooks/useStopArrivals'
 import { STOP_ICON_URL } from '@/util/map/stopIcons'
 import { arrivalTimeLabel } from '@/util/time/clockTime'
+
+function ArrivalTime({ t }: { t: StopArrivalTime }) {
+    return (
+        <span className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
+            {t.isRealtime && (
+                <span className="relative flex size-1.5" title="Live">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
+                    <span className="relative inline-flex size-1.5 rounded-full bg-green-500" />
+                </span>
+            )}
+            {arrivalTimeLabel(t.minutesUntil)}
+        </span>
+    )
+}
 
 function PanToSelectedStop({ stop }: { stop: NearbyStop | null }) {
     const map = useMap()
@@ -30,11 +44,7 @@ interface HomeMapProps {
     located: boolean
     stops: NearbyStop[]
     onInteract: () => void
-    // Fires once the map settles after a pan/zoom (not on every drag frame) —
-    // used to refetch nearby stops for wherever the user is currently looking.
     onCenterChanged: (center: { lat: number; lng: number }) => void
-    // Which stop's bubble is open — lifted up so the sheet's Nearby list can
-    // also open/focus one, not just tapping its marker.
     selectedStop: NearbyStop | null
     onSelectedStopChange: (stop: NearbyStop | null) => void
 }
@@ -49,9 +59,23 @@ export function HomeMap({
     onSelectedStopChange,
 }: HomeMapProps) {
     const wheelAccum = useRef(0)
+
+    const [showFullSchedule, setShowFullSchedule] = useState(false)
+    const [prevStopId, setPrevStopId] = useState(selectedStop?.id ?? null)
+
+    if ((selectedStop?.id ?? null) !== prevStopId) {
+        setPrevStopId(selectedStop?.id ?? null)
+        setShowFullSchedule(false)
+    }
+
     // Only actually fetches while a stop is selected (enabled: !!stopId inside).
-    const { arrivals, loading: arrivalsLoading } = useStopArrivals(
-        selectedStop?.id ?? null
+    const {
+        arrivals,
+        hasMore,
+        loading: arrivalsLoading,
+    } = useStopArrivals(
+        selectedStop?.id ?? null,
+        showFullSchedule ? undefined : 60
     )
 
     // Scrolling up (negative deltaY) on the map collapses the sheet, same as tapping it.
@@ -81,12 +105,6 @@ export function HomeMap({
         [onCenterChanged]
     )
 
-    // A pan can refetch `stops` and drop the one currently open — close the
-    // bubble instead of leaving it pinned to a stop that's no longer listed.
-    // Guarded on stops.length: an empty list usually just means the nearby
-    // query is mid-refetch (new center), not "confirmed this stop is gone" —
-    // acting on that transient empty list was closing bubbles that were
-    // just opened (e.g. from the sheet's Nearby list, which pans the map).
     useEffect(() => {
         if (
             selectedStop &&
@@ -189,46 +207,59 @@ export function HomeMap({
                                     </div>
                                 ) : arrivals.length === 0 ? (
                                     <p className="py-1 text-xs text-gray-500">
-                                        No upcoming arrivals
+                                        {showFullSchedule
+                                            ? 'No upcoming arrivals'
+                                            : 'Nothing in the next hour'}
                                     </p>
                                 ) : (
-                                    <ul className="space-y-1">
+                                    <ul className="space-y-1.5">
                                         {arrivals.map((a) => {
-                                            const soonest = a.times[0]
+                                            const [soonest, next] = a.times
                                             return (
-                                                <li
-                                                    key={a.routeName}
-                                                    className="flex items-center justify-between gap-3"
-                                                >
-                                                    <span
-                                                        className="rounded px-1.5 py-0.5 text-xs font-semibold text-white"
-                                                        style={{
-                                                            backgroundColor:
-                                                                a.routeColor ??
-                                                                '#002D62',
-                                                        }}
-                                                    >
-                                                        {a.routeName}
-                                                    </span>
-                                                    <span className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
-                                                        {soonest.isRealtime && (
-                                                            <span
-                                                                className="relative flex size-1.5"
-                                                                title="Live"
-                                                            >
-                                                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
-                                                                <span className="relative inline-flex size-1.5 rounded-full bg-green-500" />
-                                                            </span>
+                                                <li key={a.routeName}>
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <span
+                                                            className="rounded px-1.5 py-0.5 text-xs font-semibold text-white"
+                                                            style={{
+                                                                backgroundColor:
+                                                                    a.routeColor ??
+                                                                    '#002D62',
+                                                            }}
+                                                        >
+                                                            {a.routeName}
+                                                        </span>
+                                                        <ArrivalTime
+                                                            t={soonest}
+                                                        />
+                                                    </div>
+                                                    {next &&
+                                                        arrivals.length ===
+                                                            1 && (
+                                                            <div className="flex justify-end">
+                                                                <ArrivalTime
+                                                                    t={next}
+                                                                />
+                                                            </div>
                                                         )}
-                                                        {arrivalTimeLabel(
-                                                            soonest.minutesUntil
-                                                        )}
-                                                    </span>
                                                 </li>
                                             )
                                         })}
                                     </ul>
                                 )}
+
+                                {!arrivalsLoading &&
+                                    !showFullSchedule &&
+                                    hasMore && (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setShowFullSchedule(true)
+                                            }
+                                            className="mt-1.5 w-full text-center text-xs font-medium text-primary hover:underline"
+                                        >
+                                            Show more
+                                        </button>
+                                    )}
                             </div>
                         </InfoWindow>
                     )}

@@ -7,17 +7,25 @@
 import { useQuery } from '@tanstack/react-query'
 import type { StopArrival } from '@/types/common'
 
-export function useStopArrivals(stopId: string | null) {
-    const query = useQuery({
-        queryKey: ['stops-arrivals', stopId],
-        queryFn: async ({ signal }): Promise<StopArrival[]> => {
-            const res = await fetch(
-                `/api/stops-arrivals?stopId=${encodeURIComponent(stopId!)}`,
-                { signal }
-            )
+type StopArrivalsResult = {
+    arrivals: StopArrival[]
+    hasMore: boolean
+}
+
+export function useStopArrivals(stopId: string | null, withinMinutes?: number) {
+    const { data, isLoading } = useQuery({
+        queryKey: ['stops-arrivals', stopId, withinMinutes],
+        queryFn: async ({ signal }): Promise<StopArrivalsResult> => {
+            const params = new URLSearchParams({ stopId: stopId! })
+            if (withinMinutes != null) {
+                params.set('withinMinutes', String(withinMinutes))
+            }
+            const res = await fetch(`/api/stops-arrivals?${params}`, {
+                signal,
+            })
             if (!res.ok) throw new Error('Failed to load arrivals')
             const data = await res.json()
-            return data.arrivals ?? []
+            return { arrivals: data.arrivals ?? [], hasMore: !!data.hasMore }
         },
         enabled: !!stopId,
         refetchInterval: 30_000,
@@ -26,7 +34,8 @@ export function useStopArrivals(stopId: string | null) {
     })
 
     return {
-        arrivals: query.data ?? [],
-        loading: query.isLoading,
+        arrivals: data?.arrivals ?? [],
+        hasMore: data?.hasMore ?? false,
+        loading: isLoading,
     }
 }
