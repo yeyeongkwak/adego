@@ -4,12 +4,10 @@ import {
     Search,
     Navigation,
     Map,
-    User,
     MapPin,
     Star,
     Clock,
     ChevronRight,
-    Lock,
     Loader2,
 } from 'lucide-react'
 import { Input } from './ui/input'
@@ -21,47 +19,30 @@ import {
     SheetDescription,
 } from './ui/sheet'
 import { useAutocomplete } from '@/hooks/useAutocomplete'
+import { useFavoritePlaces } from '@/hooks/useFavoritePlaces'
+import { useRecentPlaces } from '@/hooks/useRecentPlaces'
 import { Prediction, SelectedPlace } from '@/types/common'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { cn } from '@/lib/utils/utils'
 
 interface LocationSearchSheetProps {
     isOpen: boolean
     onClose: () => void
     title: string
-    isAuthenticated: boolean
     onLocationSelect: (place: SelectedPlace) => void
-    onLoginClick: () => void
-}
-
-interface FavoriteLocation {
-    id: string
-    name: string
-    label: string
-    address: string
-    icon: 'home' | 'work' | 'location'
-    longitude: number
-    latitude: number
-}
-
-interface RecentLocation {
-    id: string
-    name: string
-    address: string
-    longitude: number
-    latitude: number
 }
 
 export function LocationSearchSheet({
     isOpen,
     onClose,
     title,
-    isAuthenticated,
     onLocationSelect,
-    onLoginClick,
 }: LocationSearchSheetProps) {
     const [searchQuery, setSearchQuery] = useState('')
     const [resolving, setResolving] = useState(false)
+    const [favoritingPlaceId, setFavoritingPlaceId] = useState<string | null>(
+        null
+    )
 
     // Only fire the autocomplete request once there's more than 1 character.
     const hasQuery = searchQuery.trim().length > 1
@@ -69,59 +50,13 @@ export function LocationSearchSheet({
         hasQuery ? searchQuery : ''
     )
 
-    const favoriteLocations: FavoriteLocation[] = [
-        {
-            id: '1',
-            name: 'Home',
-            label: '326 Gilles St',
-            latitude: 0,
-            longitude: 0,
-            address: '326 Gilles St, Adelaide SA 5000',
-            icon: 'home',
-        },
-        {
-            id: '2',
-            name: 'Woolworths',
-            label: '80 Rundle Mall',
-            latitude: 0,
-            longitude: 0,
-            address: '80 Rundle Mall, Adelaide SA 5000, Australia',
-            icon: 'location',
-        },
-        {
-            id: '3',
-            name: 'Flinders University City Campus',
-            label: '3 Station Rd',
-            latitude: 0,
-            longitude: 0,
-            address: '3 Station Rd, Adelaide SA 5000, Australia',
-            icon: 'location',
-        },
-    ]
+    const { favorites, toggleFavorite } = useFavoritePlaces()
+    const { recents, addRecent } = useRecentPlaces()
 
-    const recentLocations: RecentLocation[] = [
-        {
-            id: '1',
-            name: 'Bottega Gelateria',
-            address: '58 Jetty Rd, Glenelg SA 5045, Australia',
-            latitude: 0,
-            longitude: 0,
-        },
-        {
-            id: '2',
-            name: 'Victoria Square Stop',
-            address: 'Adelaide SA 5000, Australia',
-            latitude: 0,
-            longitude: 0,
-        },
-        {
-            id: '3',
-            name: 'Adelaide Railway Station',
-            address: 'North Tce, Adelaide SA 5000, Australia',
-            latitude: 0,
-            longitude: 0,
-        },
-    ]
+    const handleSelect = (place: SelectedPlace) => {
+        addRecent(place)
+        onLocationSelect(place)
+    }
 
     const handleCurrentLocationClick = async () => {
         // 1) Check permission status
@@ -149,7 +84,7 @@ export function LocationSearchSheet({
                     )
                     const data = await res.json()
                     if (data.address) address = data.address
-                } catch (e) {}
+                } catch {}
                 onLocationSelect({
                     label: address,
                     lat: position.coords.latitude,
@@ -170,11 +105,12 @@ export function LocationSearchSheet({
             const res = await fetch(`/api/place-coords?${params.toString()}`)
             const data = await res.json()
             if (data.lat != null && data.lng != null) {
-                onLocationSelect({
+                handleSelect({
                     label: prediction.mainText,
                     address: prediction.secondaryText || data.address,
                     lat: data.lat,
                     lng: data.lng,
+                    placeId: prediction.placeId,
                 })
             }
         } finally {
@@ -184,12 +120,52 @@ export function LocationSearchSheet({
         }
     }
 
+    const handleToggleFavoritePrediction = async (
+        e: React.MouseEvent,
+        prediction: Prediction
+    ) => {
+        e.stopPropagation()
+
+        if (favorites.some((f) => f.placeId === prediction.placeId)) {
+            toggleFavorite({
+                label: prediction.mainText,
+                lat: 0,
+                lng: 0,
+                placeId: prediction.placeId,
+            })
+            return
+        }
+
+        setFavoritingPlaceId(prediction.placeId)
+        try {
+            const params = new URLSearchParams({
+                placeId: prediction.placeId,
+            })
+            if (sessionToken) params.set('sessionToken', sessionToken)
+
+            const res = await fetch(`/api/place-coords?${params.toString()}`)
+            const data = await res.json()
+            if (data.lat != null && data.lng != null) {
+                toggleFavorite({
+                    label: prediction.mainText,
+                    address: prediction.secondaryText || data.address,
+                    lat: data.lat,
+                    lng: data.lng,
+                    placeId: prediction.placeId,
+                })
+            }
+        } finally {
+            setFavoritingPlaceId(null)
+        }
+    }
+
     return (
         <Sheet
             open={isOpen}
             onOpenChange={(open) => {
                 if (!open) onClose()
             }}
+            modal={false}
         >
             <SheetContent
                 side="bottom"
@@ -260,24 +236,71 @@ export function LocationSearchSheet({
 
                             {!resolving &&
                                 predictions.map((prediction) => (
-                                    <Button
+                                    <div
                                         key={prediction.placeId}
-                                        variant="ghost"
-                                        className="h-auto w-full justify-start gap-4 rounded-lg p-4 hover:bg-gray-50 hover:text-foreground"
-                                        onClick={() => handlePick(prediction)}
+                                        className="flex items-center gap-1"
                                     >
-                                        <div className="p-2 bg-gray-100 rounded-full">
-                                            <MapPin className="size-5 text-gray-600" />
-                                        </div>
-                                        <div className="flex-1 min-w-0 text-left">
-                                            <p className="font-medium truncate">
-                                                {prediction.mainText}
-                                            </p>
-                                            <p className="text-sm text-gray-500 truncate">
-                                                {prediction.secondaryText}
-                                            </p>
-                                        </div>
-                                    </Button>
+                                        <Button
+                                            variant="ghost"
+                                            className="h-auto min-w-0 flex-1 justify-start gap-4 rounded-lg p-4 hover:bg-gray-50 hover:text-foreground"
+                                            onClick={() =>
+                                                handlePick(prediction)
+                                            }
+                                        >
+                                            <div className="p-2 bg-gray-100 rounded-full">
+                                                <MapPin className="size-5 text-gray-600" />
+                                            </div>
+                                            <div className="flex-1 min-w-0 text-left">
+                                                <p className="font-medium truncate">
+                                                    {prediction.mainText}
+                                                </p>
+                                                <p className="text-sm text-gray-500 truncate">
+                                                    {prediction.secondaryText}
+                                                </p>
+                                            </div>
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={(e) =>
+                                                handleToggleFavoritePrediction(
+                                                    e,
+                                                    prediction
+                                                )
+                                            }
+                                            disabled={
+                                                favoritingPlaceId ===
+                                                prediction.placeId
+                                            }
+                                            aria-label={
+                                                favorites.some(
+                                                    (f) =>
+                                                        f.placeId ===
+                                                        prediction.placeId
+                                                )
+                                                    ? 'Remove from favourites'
+                                                    : 'Add to favourites'
+                                            }
+                                            className="shrink-0 text-gray-300 hover:bg-transparent hover:text-amber-400"
+                                        >
+                                            {favoritingPlaceId ===
+                                            prediction.placeId ? (
+                                                <Loader2 className="size-4 animate-spin" />
+                                            ) : (
+                                                <Star
+                                                    className={cn(
+                                                        'size-4',
+                                                        favorites.some(
+                                                            (f) =>
+                                                                f.placeId ===
+                                                                prediction.placeId
+                                                        ) &&
+                                                            'fill-amber-400 text-amber-400'
+                                                    )}
+                                                />
+                                            )}
+                                        </Button>
+                                    </div>
                                 ))}
                         </div>
                     ) : (
@@ -323,148 +346,93 @@ export function LocationSearchSheet({
                                 </Button>
                             </div>
 
-                            {/* Favorites - Only for authenticated users */}
-                            {isAuthenticated ? (
+                            {/* Favorites — localStorage-backed, works for
+                                guests too (see useFavoritePlaces) */}
+                            {favorites.length > 0 && (
                                 <div className="px-4 py-1">
                                     <h3 className="font-semibold mb-3">
                                         Favorites
                                     </h3>
                                     <div className="space-y-2">
-                                        {favoriteLocations.map((location) => (
-                                            <Button
-                                                key={location.id}
-                                                variant="ghost"
-                                                className="h-auto w-full justify-start gap-4 rounded-lg p-4 hover:bg-gray-50 hover:text-foreground"
-                                                onClick={() =>
-                                                    onLocationSelect({
-                                                        label: location.label,
-                                                        lat: location.latitude,
-                                                        lng: location.longitude,
-                                                    })
+                                        {favorites.map((place) => (
+                                            <div
+                                                key={
+                                                    place.placeId ?? place.label
                                                 }
+                                                className="flex items-center gap-1"
                                             >
-                                                <div className="p-2 bg-gray-100 rounded-full">
-                                                    {location.icon ===
-                                                    'home' ? (
-                                                        <Star className="size-5 text-gray-600 fill-gray-600" />
-                                                    ) : (
-                                                        <MapPin className="size-5 text-gray-600" />
-                                                    )}
-                                                </div>
-                                                <div className="flex-1 text-left">
-                                                    <p className="font-medium">
-                                                        {location.name}
-                                                    </p>
-                                                    <p className="text-sm text-gray-500">
-                                                        {location.address}
-                                                    </p>
-                                                </div>
-                                                <ChevronRight className="size-5 text-gray-400" />
-                                            </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    className="h-auto min-w-0 flex-1 justify-start gap-4 rounded-lg p-4 hover:bg-gray-50 hover:text-foreground"
+                                                    onClick={() =>
+                                                        handleSelect(place)
+                                                    }
+                                                >
+                                                    <div className="p-2 bg-gray-100 rounded-full">
+                                                        <Star className="size-5 fill-amber-400 text-amber-400" />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0 text-left">
+                                                        <p className="font-medium truncate">
+                                                            {place.label}
+                                                        </p>
+                                                        {place.address && (
+                                                            <p className="text-sm text-gray-500 truncate">
+                                                                {place.address}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() =>
+                                                        toggleFavorite(place)
+                                                    }
+                                                    aria-label="Remove from favourites"
+                                                    className="shrink-0 text-amber-400 hover:bg-transparent hover:text-amber-500"
+                                                >
+                                                    <Star className="size-4 fill-amber-400" />
+                                                </Button>
+                                            </div>
                                         ))}
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="px-4 py-2">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <h3 className="font-semibold text-gray-400">
-                                            Favorites
-                                        </h3>
-                                        <Lock className="size-4 text-gray-400" />
-                                    </div>
-                                    <Card className="p-6 bg-linear-to-r from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 text-center">
-                                        <div className="flex flex-col items-center gap-3">
-                                            <div className="p-3 bg-gray-200 rounded-full">
-                                                <Star className="size-6 text-gray-400" />
-                                            </div>
-                                            <div>
-                                                <p className="font-medium text-gray-700 mb-1">
-                                                    Save Your Favorites
-                                                </p>
-                                                <p className="text-sm text-gray-600">
-                                                    Sign in to access saved
-                                                    locations
-                                                </p>
-                                            </div>
-                                            <Button
-                                                onClick={onLoginClick}
-                                                variant="outline"
-                                                className="mt-2"
-                                            >
-                                                Sign In
-                                            </Button>
-                                        </div>
-                                    </Card>
-                                </div>
                             )}
 
-                            {/* Recent - Only for authenticated users */}
-                            {isAuthenticated ? (
+                            {recents.length > 0 && (
                                 <div className="px-4 py-1 mt-6">
                                     <h3 className="font-semibold mb-3">
                                         Recent
                                     </h3>
                                     <div className="space-y-2">
-                                        {recentLocations.map((location) => (
+                                        {recents.map((place) => (
                                             <Button
-                                                key={location.id}
+                                                key={
+                                                    place.placeId ?? place.label
+                                                }
                                                 variant="ghost"
                                                 className="h-auto w-full justify-start gap-4 rounded-lg p-4 hover:bg-gray-50 hover:text-foreground"
                                                 onClick={() =>
-                                                    onLocationSelect({
-                                                        label: location.name,
-                                                        lat: location.latitude,
-                                                        lng: location.longitude,
-                                                    })
+                                                    handleSelect(place)
                                                 }
                                             >
                                                 <div className="p-2 bg-gray-100 rounded-full">
                                                     <Clock className="size-5 text-gray-600" />
                                                 </div>
-                                                <div className="flex-1 text-left">
-                                                    <p className="font-medium">
-                                                        {location.name}
+                                                <div className="flex-1 min-w-0 text-left">
+                                                    <p className="font-medium truncate">
+                                                        {place.label}
                                                     </p>
-                                                    <p className="text-sm text-gray-500">
-                                                        {location.address}
-                                                    </p>
+                                                    {place.address && (
+                                                        <p className="text-sm text-gray-500 truncate">
+                                                            {place.address}
+                                                        </p>
+                                                    )}
                                                 </div>
                                                 <ChevronRight className="size-5 text-gray-400" />
                                             </Button>
                                         ))}
                                     </div>
-                                </div>
-                            ) : (
-                                <div className="px-4 py-2 mt-6">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <h3 className="font-semibold text-gray-400">
-                                            Recent
-                                        </h3>
-                                        <Lock className="size-4 text-gray-400" />
-                                    </div>
-                                    <Card className="p-6 bg-linear-to-r from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 text-center">
-                                        <div className="flex flex-col items-center gap-3">
-                                            <div className="p-3 bg-gray-200 rounded-full">
-                                                <Clock className="size-6 text-gray-400" />
-                                            </div>
-                                            <div>
-                                                <p className="font-medium text-gray-700 mb-1">
-                                                    View Your History
-                                                </p>
-                                                <p className="text-sm text-gray-600">
-                                                    Sign in to see recent
-                                                    searches
-                                                </p>
-                                            </div>
-                                            <Button
-                                                onClick={onLoginClick}
-                                                variant="outline"
-                                                className="mt-2"
-                                            >
-                                                Sign In
-                                            </Button>
-                                        </div>
-                                    </Card>
                                 </div>
                             )}
                         </>

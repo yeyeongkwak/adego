@@ -1,28 +1,17 @@
 'use client'
 
 import { useState } from 'react'
-import {
-    ArrowLeft,
-    BusFront,
-    ChevronDown,
-    Loader2,
-    Search,
-    TrainFront,
-    TramFront,
-} from 'lucide-react'
+import { ArrowLeft, ChevronDown, Loader2, Search, Star } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { PageHeader } from '@/components/PageHeader'
+import { StopRow } from '@/components/StopRow'
 import { useStopSearch } from '@/hooks/useStopSearch'
 import { useStopArrivals } from '@/hooks/useStopArrivals'
-import { STOP_ICON_DEFAULT_COLOR } from '@/util/map/stopIcons'
+import { useFavoriteStops } from '@/hooks/useFavoriteStops'
+import { useStopSelectStore } from '@/store/stopSelectStore'
 import { arrivalTimeLabel } from '@/util/time/clockTime'
 import { cn } from '@/lib/utils/utils'
-import type { NearbyStop, StopArrival, StopArrivalTime, StopMode } from '@/types/common'
-
-const MODE_ICON: Record<StopMode, typeof BusFront> = {
-    BUS: BusFront,
-    TRAM: TramFront,
-    RAIL: TrainFront,
-}
+import type { NearbyStop, StopArrival, StopArrivalTime } from '@/types/common'
 
 function TimeLabel({ t }: { t: StopArrivalTime }) {
     return (
@@ -88,18 +77,21 @@ function RouteArrivalRow({ arrival }: { arrival: StopArrival }) {
 
 export default function StopsPage() {
     const [query, setQuery] = useState('')
-    const [selectedStop, setSelectedStop] = useState<NearbyStop | null>(null)
+    const [selectedStop, setSelectedStop] = useState<NearbyStop | null>(() =>
+        useStopSelectStore.getState().consumePendingStop()
+    )
     const { stops, loading } = useStopSearch(query)
     const { arrivals, loading: arrivalsLoading } = useStopArrivals(
         selectedStop?.id ?? null
     )
+    const { favorites, isFavorite, toggleFavorite } = useFavoriteStops()
 
     return (
         <div className="flex h-full flex-col bg-gray-50">
             <div className="bg-[#002D62] px-4 py-4 text-white shadow-md">
-                <h1 className="mb-3 text-xl font-semibold tracking-tight">
-                    Stops
-                </h1>
+                <div className="mb-3">
+                    <PageHeader title="Stops" />
+                </div>
                 <div className="relative">
                     <Search className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-gray-400" />
                     <Input
@@ -128,14 +120,38 @@ export default function StopsPage() {
                         </button>
 
                         <div className="rounded-2xl bg-white p-4 shadow-sm">
-                            <p className="text-base font-semibold text-gray-900">
-                                {selectedStop.name}
-                            </p>
-                            {selectedStop.code && (
-                                <p className="mb-3 text-xs text-gray-500">
-                                    Stop {selectedStop.code}
-                                </p>
-                            )}
+                            <div className="mb-3 flex items-start justify-between gap-2">
+                                <div>
+                                    <p className="text-base font-semibold text-gray-900">
+                                        {selectedStop.name}
+                                    </p>
+                                    {selectedStop.code && (
+                                        <p className="text-xs text-gray-500">
+                                            Stop {selectedStop.code}
+                                        </p>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        toggleFavorite(selectedStop)
+                                    }
+                                    aria-label={
+                                        isFavorite(selectedStop.id)
+                                            ? 'Remove from favourites'
+                                            : 'Add to favourites'
+                                    }
+                                    className="shrink-0 text-gray-300 transition-colors hover:text-amber-400"
+                                >
+                                    <Star
+                                        className={cn(
+                                            'size-5',
+                                            isFavorite(selectedStop.id) &&
+                                                'fill-amber-400 text-amber-400'
+                                        )}
+                                    />
+                                </button>
+                            </div>
 
                             {arrivalsLoading ? (
                                 <div className="flex items-center gap-2 py-4 text-sm text-gray-500">
@@ -169,41 +185,34 @@ export default function StopsPage() {
                         </p>
                     ) : (
                         <div className="space-y-2">
-                            {stops.map((stop) => {
-                                const Icon = MODE_ICON[stop.mode]
-                                return (
-                                    <button
-                                        key={stop.id}
-                                        type="button"
-                                        onClick={() => setSelectedStop(stop)}
-                                        className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left shadow-sm transition-colors hover:bg-gray-50"
-                                    >
-                                        <span
-                                            className="flex size-9 shrink-0 items-center justify-center rounded-full text-white"
-                                            style={{
-                                                backgroundColor:
-                                                    STOP_ICON_DEFAULT_COLOR[
-                                                        stop.mode
-                                                    ],
-                                            }}
-                                        >
-                                            <Icon className="size-4" />
-                                        </span>
-                                        <span className="min-w-0 flex-1">
-                                            <span className="block truncate text-sm font-semibold text-gray-900">
-                                                {stop.name}
-                                            </span>
-                                            {stop.code && (
-                                                <span className="block text-xs text-gray-500">
-                                                    Stop {stop.code}
-                                                </span>
-                                            )}
-                                        </span>
-                                    </button>
-                                )
-                            })}
+                            {stops.map((stop) => (
+                                <StopRow
+                                    key={stop.id}
+                                    stop={stop}
+                                    isFavorite={isFavorite(stop.id)}
+                                    onSelect={() => setSelectedStop(stop)}
+                                    onToggleFavorite={() =>
+                                        toggleFavorite(stop)
+                                    }
+                                />
+                            ))}
                         </div>
                     )
+                ) : favorites.length > 0 ? (
+                    <div className="space-y-2">
+                        <h2 className="px-1 text-xs font-semibold tracking-wide text-gray-400 uppercase">
+                            Favourites
+                        </h2>
+                        {favorites.map((stop) => (
+                            <StopRow
+                                key={stop.id}
+                                stop={stop}
+                                isFavorite
+                                onSelect={() => setSelectedStop(stop)}
+                                onToggleFavorite={() => toggleFavorite(stop)}
+                            />
+                        ))}
+                    </div>
                 ) : (
                     <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
                         <Search className="size-8 text-gray-300" />

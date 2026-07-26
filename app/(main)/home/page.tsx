@@ -185,9 +185,7 @@ export default function HomePage() {
                     isOpen={destSearchOpen}
                     onClose={() => setDestSearchOpen(false)}
                     title="Select Destination"
-                    isAuthenticated={isAuthenticated}
                     onLocationSelect={handleDestinationPicked}
-                    onLoginClick={() => setIsAuthenticated(true)}
                 />
             )}
 
