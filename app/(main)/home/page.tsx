@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Star, User } from 'lucide-react'
+import { Loader2, LocateFixed, User } from 'lucide-react'
 import { HomeMap } from '@/components/HomeMap'
 import { HomeSheet } from '@/components/HomeSheet'
 import { LocationSearchSheet } from '@/components/LocationSearchSheet'
 import { Button } from '@/components/ui/button'
 import { useNearbyStops } from '@/hooks/useNearbyStops'
+import { useGeolocationStore } from '@/store/geolocationStore'
 import { useRouteSearchStore } from '@/store/routeSearchStore'
 import type { NearbyStop, SelectedPlace } from '@/types/common'
 
@@ -22,8 +23,16 @@ export default function HomePage() {
         number | string | null
     >(0.5)
 
-    const [center, setCenter] = useState(ADELAIDE)
-    const [located, setLocated] = useState(false)
+    // Shared across the whole app (survives this page unmounting on route
+    // change) — granting once keeps the blue dot moving via watchPosition
+    // instead of asking again every time /home remounts.
+    const coords = useGeolocationStore((s) => s.coords)
+    const permissionInitialized = useGeolocationStore((s) => s.initialized)
+    const locating = useGeolocationStore((s) => s.locating)
+    const enableLocation = useGeolocationStore((s) => s.enable)
+
+    const located = coords != null
+    const center = coords ?? ADELAIDE
 
     // Restoring this page from the back-forward cache (e.g. hitting Back
     // from a 404) resumes the frozen page instead of remounting it — but
@@ -39,34 +48,20 @@ export default function HomePage() {
         return () => window.removeEventListener('pageshow', handlePageShow)
     }, [])
 
-    // Follows wherever the user is currently looking at on the map (starts at
-    // `center`, then moves on pan/zoom). Nearby stops are fetched for this,
-    // not for `center` — `center` stays pinned to the actual GPS fix so the
-    // blue "current location" dot doesn't drift when the user pans away.
     const [mapCenter, setMapCenter] = useState(ADELAIDE)
 
-    const getHere = (): Promise<{ lat: number; lng: number } | null> =>
-        new Promise((resolve) => {
-            if (!navigator.geolocation) return resolve(null)
-            navigator.geolocation.getCurrentPosition(
-                (position) =>
-                    resolve({
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude,
-                    }),
-                () => resolve(null),
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-            )
-        })
-
+    // Seed the nearby-stops search center from the first GPS fix only —
+    // after that `mapCenter` is driven purely by the user panning the map
+    // (see onCenterChanged below), so later watchPosition updates (the user
+    // actually walking around) don't yank the "nearby" list back to wherever
+    // they currently are while they're looking at some other spot on the map.
+    const seededMapCenter = useRef(false)
     useEffect(() => {
-        getHere().then((here) => {
-            if (!here) return
-            setCenter(here)
-            setMapCenter(here)
-            setLocated(true)
-        })
-    }, [])
+        if (coords && !seededMapCenter.current) {
+            seededMapCenter.current = true
+            setMapCenter(coords)
+        }
+    }, [coords])
 
     const { stops, loading: stopsLoading } = useNearbyStops(mapCenter)
 
@@ -85,9 +80,6 @@ export default function HomePage() {
         collapseSheet() // reveal the map + the bubble that's about to open
     }
 
-    // "Where to?" input -> hand off to the same LocationSearchSheet /route
-    // uses (destination mode, autocomplete). Picking one there sends the
-    // user straight to /route with origin=here, destination=what they picked.
     const router = useRouter()
     const [destSearchOpen, setDestSearchOpen] = useState(false)
 
@@ -99,24 +91,18 @@ export default function HomePage() {
     const handleDestinationPicked = async (destination: SelectedPlace) => {
         setDestSearchOpen(false)
 
-        let here = center
-        if (!located) {
-            const fresh = await getHere()
-            if (!fresh) {
+        let here = coords
+        if (!here) {
+            const ok = await enableLocation()
+            here = useGeolocationStore.getState().coords
+            if (!ok || !here) {
                 alert(
                     'Could not get your current location. Please allow location access and try again.'
                 )
                 return
             }
-            here = fresh
-            setCenter(fresh)
-            setMapCenter(fresh)
-            setLocated(true)
         }
 
-        // Same reverse-geocode LocationSearchSheet's "use current location"
-        // does -> the origin pill on /route shows an address, not the literal
-        // string "Current Location".
         let label = 'Current Location'
         try {
             const res = await fetch(
@@ -136,7 +122,6 @@ export default function HomePage() {
     }
 
     return (
-        // 모바일 폭(max-w-md) 앱 셸은 (main)/layout.tsx가 제공 — 여기선 그 안을 꽉 채우기만.
         <div className="relative h-full w-full overflow-hidden bg-gray-50">
             <HomeMap
                 key={mapMountKey}
@@ -166,21 +151,42 @@ export default function HomePage() {
                     )}
                 </div>
 
-                {!isAuthenticated && (
+                {permissionInitialized && !located && (
                     <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-white p-3 shadow-lg">
-                        <Star className="size-5 shrink-0 fill-amber-400 text-amber-400" />
+                        <LocateFixed className="size-5 shrink-0 text-primary" />
                         <p className="flex-1 text-sm font-medium text-gray-700">
-                            Sign in for favourites &amp; history
+                            Enable location for nearby stops
                         </p>
                         <Button
                             size="sm"
                             className="rounded-full"
-                            onClick={() => setIsAuthenticated(true)}
+                            onClick={enableLocation}
+                            disabled={locating}
                         >
-                            Sign in
+                            {locating ? (
+                                <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                                'Enable'
+                            )}
                         </Button>
                     </div>
                 )}
+
+                {/*{!isAuthenticated && (*/}
+                {/*    <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-white p-3 shadow-lg">*/}
+                {/*        <Star className="size-5 shrink-0 fill-amber-400 text-amber-400" />*/}
+                {/*        <p className="flex-1 text-sm font-medium text-gray-700">*/}
+                {/*            Sign in for favourites &amp; history*/}
+                {/*        </p>*/}
+                {/*        <Button*/}
+                {/*            size="sm"*/}
+                {/*            className="rounded-full"*/}
+                {/*            onClick={() => setIsAuthenticated(true)}*/}
+                {/*        >*/}
+                {/*            Sign in*/}
+                {/*        </Button>*/}
+                {/*    </div>*/}
+                {/*)}*/}
             </div>
 
             <HomeSheet
