@@ -63,12 +63,14 @@ export const useGeolocationStore = create<GeolocationStore>((set, get) => ({
                     })
                     flushPending(true)
                 },
-                () => {
+                (error) => {
                     set({ locating: false })
-                    clearActiveWatch()
+                    if (error.code === error.PERMISSION_DENIED) {
+                        clearActiveWatch()
+                    }
                     flushPending(false)
                 },
-                { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+                { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 }
             )
         }),
 

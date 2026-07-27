@@ -455,49 +455,45 @@ export function LocationSearchSheet({
                 </SheetContent>
             </Sheet>
 
-            <Sheet
-                open={locationPromptOpen}
-                onOpenChange={(open) => {
-                    if (!open) setLocationPromptOpen(false)
-                }}
-            >
-                <SheetContent
-                    side="bottom"
-                    showCloseButton={false}
-                    className="mx-auto w-full max-w-md gap-0 rounded-t-2xl border-0 bg-white p-6"
+            {locationPromptOpen && (
+                <div
+                    className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Enable location"
+                    onClick={() => setLocationPromptOpen(false)}
                 >
-                    <SheetHeader className="sr-only">
-                        <SheetTitle>Enable location</SheetTitle>
-                        <SheetDescription>
-                            Allow location access to use your current location
-                        </SheetDescription>
-                    </SheetHeader>
-                    <div className="flex flex-col items-center gap-3 text-center">
-                        <div className="rounded-full bg-blue-50 p-3">
-                            <LocateFixed
-                                className="size-6"
-                                style={{ color: 'var(--primary)' }}
-                            />
+                    <div
+                        className="w-full max-w-md rounded-t-2xl bg-white p-6"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex flex-col items-center gap-3 text-center">
+                            <div className="rounded-full bg-blue-50 p-3">
+                                <LocateFixed
+                                    className="size-6"
+                                    style={{ color: 'var(--primary)' }}
+                                />
+                            </div>
+                            <p className="font-semibold">Location is off</p>
+                            <p className="text-sm text-gray-500">
+                                Turn on location access to use &quot;Current
+                                Location&quot; as your starting point.
+                            </p>
+                            <Button
+                                className="w-full rounded-full"
+                                onClick={handleEnableLocationConfirm}
+                                disabled={locating}
+                            >
+                                {locating ? (
+                                    <Loader2 className="size-4 animate-spin" />
+                                ) : (
+                                    'Enable'
+                                )}
+                            </Button>
                         </div>
-                        <p className="font-semibold">Location is off</p>
-                        <p className="text-sm text-gray-500">
-                            Turn on location access to use &quot;Current
-                            Location&quot; as your starting point.
-                        </p>
-                        <Button
-                            className="w-full rounded-full"
-                            onClick={handleEnableLocationConfirm}
-                            disabled={locating}
-                        >
-                            {locating ? (
-                                <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                                'Enable'
-                            )}
-                        </Button>
                     </div>
-                </SheetContent>
-            </Sheet>
+                </div>
+            )}
         </>
     )
 }

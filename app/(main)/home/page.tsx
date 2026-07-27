@@ -34,11 +34,7 @@ export default function HomePage() {
     const located = coords != null
     const center = coords ?? ADELAIDE
 
-    // Restoring this page from the back-forward cache (e.g. hitting Back
-    // from a 404) resumes the frozen page instead of remounting it — but
-    // Google Maps' WebGL canvas can come back blank since nothing tells it
-    // to redraw. Bumping this key forces HomeMap to fully remount whenever
-    // that happens.
+
     const [mapMountKey, setMapMountKey] = useState(0)
     useEffect(() => {
         const handlePageShow = (e: PageTransitionEvent) => {
@@ -50,11 +46,6 @@ export default function HomePage() {
 
     const [mapCenter, setMapCenter] = useState(ADELAIDE)
 
-    // Seed the nearby-stops search center from the first GPS fix only —
-    // after that `mapCenter` is driven purely by the user panning the map
-    // (see onCenterChanged below), so later watchPosition updates (the user
-    // actually walking around) don't yank the "nearby" list back to wherever
-    // they currently are while they're looking at some other spot on the map.
     const seededMapCenter = useRef(false)
     useEffect(() => {
         if (coords && !seededMapCenter.current) {
@@ -78,6 +69,15 @@ export default function HomePage() {
     const handleStopPick = (stop: NearbyStop) => {
         setSelectedStop(stop)
         collapseSheet() // reveal the map + the bubble that's about to open
+    }
+
+    const handleEnableLocationClick = async () => {
+        const ok = await enableLocation()
+        if (!ok) {
+            alert(
+                'Could not get your location. Check your browser/site location permission settings and try again.'
+            )
+        }
     }
 
     const router = useRouter()
@@ -160,7 +160,7 @@ export default function HomePage() {
                         <Button
                             size="sm"
                             className="rounded-full"
-                            onClick={enableLocation}
+                            onClick={handleEnableLocationClick}
                             disabled={locating}
                         >
                             {locating ? (
