@@ -175,7 +175,7 @@ export function LocationSearchSheet({
                 <SheetContent
                     side="bottom"
                     showCloseButton={false}
-                    className="inset-0 mx-auto h-full w-full max-w-md gap-0 rounded-none border-0 bg-white p-0 flex flex-col"
+                    className="inset-0 z-[70] mx-auto h-full w-full max-w-md gap-0 rounded-none border-0 bg-white p-0 flex flex-col"
                 >
                     <SheetHeader className="sr-only">
                         <SheetTitle>{title}</SheetTitle>
@@ -457,7 +457,7 @@ export function LocationSearchSheet({
 
             {locationPromptOpen && (
                 <div
-                    className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50"
+                    className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50"
                     role="dialog"
                     aria-modal="true"
                     aria-label="Enable location"
