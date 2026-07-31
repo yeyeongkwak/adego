@@ -23,6 +23,7 @@ import { useAutocomplete } from '@/hooks/useAutocomplete'
 import { useFavoritePlaces } from '@/hooks/useFavoritePlaces'
 import { useRecentPlaces } from '@/hooks/useRecentPlaces'
 import { useGeolocationStore } from '@/store/geolocationStore'
+import { MapPickerSheet } from '@/components/MapPickerSheet'
 import { Prediction, SelectedPlace } from '@/types/common'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils/utils'
@@ -47,6 +48,7 @@ export function LocationSearchSheet({
     )
 
     const [locationPromptOpen, setLocationPromptOpen] = useState(false)
+    const [mapPickerOpen, setMapPickerOpen] = useState(false)
     const coords = useGeolocationStore((s) => s.coords)
     const locating = useGeolocationStore((s) => s.locating)
     const enableLocation = useGeolocationStore((s) => s.enable)
@@ -66,17 +68,16 @@ export function LocationSearchSheet({
     }
 
     const selectCoords = async (lat: number, lng: number) => {
-        // Same reverse-geocode used elsewhere -> "Current Location" resolves
-        // to an actual address, not the literal string.
-        let address = 'Current Location'
+        let label = 'Current Location'
         try {
             const res = await fetch(
                 `/api/reverse-geocode?lat=${lat}&lng=${lng}`
             )
             const data = await res.json()
-            if (data.address) address = data.address
+            if (data.placeName || data.address)
+                label = data.placeName ?? data.address
         } catch {}
-        onLocationSelect({ label: address, lat, lng })
+        onLocationSelect({ label, lat, lng })
     }
 
     const handleCurrentLocationClick = async () => {
@@ -176,6 +177,8 @@ export function LocationSearchSheet({
                     side="bottom"
                     showCloseButton={false}
                     className="inset-0 z-[70] mx-auto h-full w-full max-w-md gap-0 rounded-none border-0 bg-white p-0 flex flex-col"
+                    onPointerDownOutside={(e) => e.preventDefault()}
+                    onInteractOutside={(e) => e.preventDefault()}
                 >
                     <SheetHeader className="sr-only">
                         <SheetTitle>{title}</SheetTitle>
@@ -183,7 +186,6 @@ export function LocationSearchSheet({
                             Search and select a location
                         </SheetDescription>
                     </SheetHeader>
-                    {/* Header */}
                     <div className="shrink-0 bg-white border-b px-4 py-3">
                         <div className="flex items-center gap-3 mb-3">
                             <div className="flex-1 relative">
@@ -340,7 +342,7 @@ export function LocationSearchSheet({
                                     <Button
                                         variant="ghost"
                                         className="h-auto w-full justify-start gap-4 rounded-lg p-4 hover:bg-gray-50 hover:text-foreground"
-                                        onClick={() => {}}
+                                        onClick={() => setMapPickerOpen(true)}
                                     >
                                         <div className="p-2 bg-gray-100 rounded-full">
                                             <Map className="size-5 text-gray-600" />
@@ -494,6 +496,16 @@ export function LocationSearchSheet({
                     </div>
                 </div>
             )}
+
+            <MapPickerSheet
+                isOpen={mapPickerOpen}
+                onClose={() => setMapPickerOpen(false)}
+                onLocationSelect={(place) => {
+                    setMapPickerOpen(false)
+                    handleSelect(place)
+                }}
+                initialCenter={coords}
+            />
         </>
     )
 }

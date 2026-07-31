@@ -34,7 +34,6 @@ export default function HomePage() {
     const located = coords != null
     const center = coords ?? ADELAIDE
 
-
     const [mapMountKey, setMapMountKey] = useState(0)
     useEffect(() => {
         const handlePageShow = (e: PageTransitionEvent) => {
@@ -109,7 +108,8 @@ export default function HomePage() {
                 `/api/reverse-geocode?lat=${here.lat}&lng=${here.lng}`
             )
             const data = await res.json()
-            if (data.address) label = data.address
+            if (data.placeName || data.address)
+                label = data.placeName ?? data.address
         } catch {}
 
         useRouteSearchStore
