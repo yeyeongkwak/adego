@@ -4,56 +4,86 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { Arrival, IRouteOption } from '@/types/common'
+import { Arrival, ILeg, IRouteOption } from '@/types/common'
 
-// Key for looking an arrival back up: "stopName|routeName"
-export function arrivalKey(stopName?: string, routeName?: string) {
+type ArrivalTime = Omit<Arrival, 'stopName' | 'routeName'>
+type ArrivalGroup = {
+    stopName: string
+    routeName: string
+    times: ArrivalTime[]
+}
+
+function pairKey(stopName?: string, routeName?: string) {
     return `${stopName ?? ''}|${routeName ?? ''}`
 }
 
 export function useArrivals(options: IRouteOption[]) {
-    // Collect every (stop, route) pair across every transit leg — not just the
-    // first one — so transfers get realtime + live tracking too, not only
-    // the vehicle you board first.
-    const pairs = options
-        .flatMap((o) => o.legs)
-        .filter(
-            (l): l is NonNullable<typeof l> & { mode: 'TRANSIT' } =>
-                l.mode === 'TRANSIT' && !!l.departureStopName && !!l.routeName
-        )
-        .map((l) => ({ stop: l.departureStopName!, route: l.routeName! }))
+    // Every TRANSIT leg across every option, grouped by (stop, route) — this
+    // is one-to-many, not a lookup: several options can board the exact
+    // same bus at the same stop (e.g. "leave now" vs. "leave a bit later"
+    // both riding the 174), and each of those legs needs matching to a
+    // *different* upcoming arrival, not the same one.
+    const legsByPair = new Map<string, ILeg[]>()
+    for (const option of options) {
+        for (const leg of option.legs) {
+            if (
+                leg.mode !== 'TRANSIT' ||
+                !leg.departureStopName ||
+                !leg.routeName
+            )
+                continue
+            const key = pairKey(leg.departureStopName, leg.routeName)
+            const list = legsByPair.get(key)
+            if (list) list.push(leg)
+            else legsByPair.set(key, [leg])
+        }
+    }
 
-    // Dedupe — several options may board the same bus at the same stop.
-    const unique = Array.from(
-        new Map(pairs.map((p) => [`${p.stop}|${p.route}`, p])).values()
-    )
+    const uniquePairs = Array.from(legsByPair.keys()).map((key) => {
+        const [stop, route] = key.split('|')
+        return { stop, route }
+    })
 
     const query = useQuery({
-        queryKey: [
-            'arrivals',
-            unique.map((p) => `${p.stop}|${p.route}`).sort(),
-        ],
+        queryKey: ['arrivals', Array.from(legsByPair.keys()).sort()],
         queryFn: async ({ signal }) => {
             const params = new URLSearchParams({
-                stops: unique.map((p) => p.stop).join(','),
-                routes: unique.map((p) => p.route).join(','),
+                stops: uniquePairs.map((p) => p.stop).join(','),
+                routes: uniquePairs.map((p) => p.route).join(','),
             })
             const res = await fetch(`/api/arrivals?${params}`, { signal })
             if (!res.ok) throw new Error('Failed to load arrivals')
             const data = await res.json()
-            return (data.arrivals ?? []) as Arrival[]
+            return (data.arrivals ?? []) as ArrivalGroup[]
         },
-        enabled: unique.length > 0,
+        enabled: uniquePairs.length > 0,
         // The feed updates ~every 60s; poll a bit faster so the countdown doesn't drift too far.
         refetchInterval: 30_000,
         staleTime: 15_000,
         retry: 1,
     })
 
-    // Map for O(1) lookup from a card: arrivals.get(arrivalKey(stop, route))
-    const arrivals = new Map<string, Arrival>(
-        (query.data ?? []).map((a) => [arrivalKey(a.stopName, a.routeName), a])
+    const groupByKey = new Map(
+        (query.data ?? []).map((g) => [pairKey(g.stopName, g.routeName), g])
     )
+    const arrivals = new Map<ILeg, Arrival>()
+    for (const [key, legs] of legsByPair) {
+        const times = groupByKey.get(key)?.times ?? []
+        const ranked = [...legs].sort(
+            (a, b) => (a.departureValue ?? 0) - (b.departureValue ?? 0)
+        )
+        ranked.forEach((leg, i) => {
+            const t = times[i]
+            arrivals.set(leg, {
+                stopName: leg.departureStopName!,
+                routeName: leg.routeName!,
+                minutesUntil: t?.minutesUntil ?? null,
+                delaySeconds: t?.delaySeconds ?? null,
+                isRealtime: t?.isRealtime ?? false,
+                tripId: t?.tripId ?? null,
+            })
+        })
+    }
 
     return { arrivals, loading: query.isLoading }
 }

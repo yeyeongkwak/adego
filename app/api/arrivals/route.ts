@@ -137,16 +137,21 @@ export async function GET(req: NextRequest) {
             arrivals: stopNames.map((stopName, i) => ({
                 stopName,
                 routeName: routeNames[i],
-                minutesUntil: null,
-                delaySeconds: null,
-                isRealtime: false,
+                times: [],
             })),
         })
     }
 
     const now = Date.now()
 
-    // 3) For each (stop, route) pair, find the soonest arrival in the feed
+    // 3) For each (stop, route) pair, collect every upcoming match in the
+    // feed (soonest first) — not just the single soonest one. Two different
+    // route options can board the exact same (stop, route) pair at
+    // different times ("catch this 174" vs. "catch the next 174"), and each
+    // needs its own distinct upcoming arrival rather than all of them
+    // collapsing onto the single earliest match.
+    const MAX_TIMES_PER_PAIR = 5
+
     type Match = {
         ms: number
         feedDelay: number
@@ -155,12 +160,12 @@ export async function GET(req: NextRequest) {
         viaArrival: boolean
     }
 
-    const matches: (Match | null)[] = stopNames.map((stopName, i) => {
+    const matchLists: Match[][] = stopNames.map((stopName, i) => {
         const routeName = routeNames[i]
         const stopId = stopIdMap.get(stopName)
-        if (!stopId) return null
+        if (!stopId) return []
 
-        let best: Match | null = null
+        const found: Match[] = []
 
         for (const entity of entities) {
             const tu = entity.tripUpdate
@@ -185,70 +190,59 @@ export async function GET(req: NextRequest) {
                     stu.arrival?.delay ?? stu.departure?.delay ?? 0
                 )
 
-                if (!best || ms < best.ms) {
-                    best = {
-                        ms,
-                        feedDelay,
-                        tripId: tu.trip?.tripId ?? null,
-                        stopId,
-                        viaArrival,
-                    }
-                }
+                found.push({
+                    ms,
+                    feedDelay,
+                    tripId: tu.trip?.tripId ?? null,
+                    stopId,
+                    viaArrival,
+                })
             }
         }
 
-        return best
+        found.sort((a, b) => a.ms - b.ms)
+        return found.slice(0, MAX_TIMES_PER_PAIR)
     })
 
     // 4) Diff the feed's predicted time against the static timetable for the
     // actual delay -> the feed itself almost never sets StopTimeUpdate.delay.
+    const allMatches = matchLists.flat()
     const tripIds = [
         ...new Set(
-            matches.map((m) => m?.tripId).filter((v): v is string => v != null)
+            allMatches
+                .map((m) => m.tripId)
+                .filter((v): v is string => v != null)
         ),
     ]
-    const stopIds = [
-        ...new Set(
-            matches.map((m) => m?.stopId).filter((v): v is string => v != null)
-        ),
-    ]
+    const stopIds = [...new Set(allMatches.map((m) => m.stopId))]
     const scheduleMap = await resolveScheduledTimes(tripIds, stopIds)
 
-    const arrivals: Arrival[] = stopNames.map((stopName, i) => {
+    const arrivals = stopNames.map((stopName, i) => {
         const routeName = routeNames[i]
-        const best = matches[i]
+        const times: Omit<Arrival, 'stopName' | 'routeName'>[] = matchLists[
+            i
+        ].map((best) => {
+            let delaySeconds = best.feedDelay
+            if (best.tripId) {
+                const sched = scheduleMap.get(`${best.tripId}|${best.stopId}`)
+                const schedTime = best.viaArrival
+                    ? (sched?.arrival ?? sched?.departure)
+                    : (sched?.departure ?? sched?.arrival)
+                if (schedTime) {
+                    const schedMs = scheduledTimeToMs(schedTime, best.ms)
+                    delaySeconds = Math.round((best.ms - schedMs) / 1000)
+                }
+            }
 
-        if (!best) {
             return {
-                stopName,
-                routeName,
-                minutesUntil: null,
-                delaySeconds: null,
-                isRealtime: false,
-                tripId: null,
+                minutesUntil: Math.max(0, Math.round((best.ms - now) / 60_000)),
+                delaySeconds,
+                isRealtime: true,
+                tripId: best.tripId,
             }
-        }
+        })
 
-        let delaySeconds = best.feedDelay
-        if (best.tripId) {
-            const sched = scheduleMap.get(`${best.tripId}|${best.stopId}`)
-            const schedTime = best.viaArrival
-                ? (sched?.arrival ?? sched?.departure)
-                : (sched?.departure ?? sched?.arrival)
-            if (schedTime) {
-                const schedMs = scheduledTimeToMs(schedTime, best.ms)
-                delaySeconds = Math.round((best.ms - schedMs) / 1000)
-            }
-        }
-
-        return {
-            stopName,
-            routeName,
-            minutesUntil: Math.max(0, Math.round((best.ms - now) / 60_000)),
-            delaySeconds,
-            isRealtime: true,
-            tripId: best.tripId,
-        }
+        return { stopName, routeName, times }
     })
 
     return NextResponse.json({ arrivals })

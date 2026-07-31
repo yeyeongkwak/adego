@@ -36,6 +36,7 @@ const toLeg = (step: any) => {
     }
 
     const td = step.transitDetails ?? {}
+    const departureIso = td.stopDetails?.departureTime
     return {
         mode: 'TRANSIT',
         durationText: text,
@@ -47,6 +48,9 @@ const toLeg = (step: any) => {
         departureStopName: td.stopDetails?.departureStop?.name,
         arrivalStopName: td.stopDetails?.arrivalStop?.name,
         numStops: td.stopCount,
+        departureValue: departureIso
+            ? Math.floor(new Date(departureIso).getTime() / 1000)
+            : undefined,
     }
 }
 

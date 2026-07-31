@@ -24,7 +24,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { LocationSearchSheet } from '@/components/LocationSearchSheet'
 import { useDirections } from '@/hooks/useDirections'
 import { Spinner } from '@/components/ui/spinner'
-import { arrivalKey, useArrivals } from '@/hooks/useArrivals'
+import { useArrivals } from '@/hooks/useArrivals'
 import { RouteRealTimeCard } from '@/components/RouteCardRealtime'
 import { RouteDetailSheet } from '@/components/RouteDetailSheet'
 import { TimePickerSheet } from '@/components/TimePickerSheet'
@@ -34,9 +34,7 @@ import { cn } from '@/lib/utils/utils'
 const TIME_STEP_MINUTES = 15
 
 const RouteListPage = () => {
-    const [detailOption, setDetailOption] = useState<IRouteOption | null>(
-        null
-    )
+    const [detailOption, setDetailOption] = useState<IRouteOption | null>(null)
     const [searchSheetOpen, setSearchSheetOpen] = useState(false)
     const [editingField, setEditingField] = useState<RouteSearchType | null>(
         null
@@ -127,7 +125,10 @@ const RouteListPage = () => {
     )
 
     const isNow = timeOption.time === 'now'
-    const { arrivals } = useArrivals(isNow ? options : [])
+    const { arrivals, loading: arrivalsLoading } = useArrivals(
+        isNow ? options : []
+    )
+    const showLoading = loading || (isNow && arrivalsLoading)
 
     const fastestOption = useMemo<IRouteOption | null>(() => {
         if (options.length === 0) return null
@@ -324,12 +325,13 @@ const RouteListPage = () => {
 
             {/* Route list section */}
             <div className="flex flex-1 flex-col p-4">
-                {loading && (
-                    <div className="flex justify-center py-12">
-                        <Spinner className="size-6 text-muted-foreground" />
+                {showLoading && (
+                    <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
+                        <Spinner className="size-6" />
+                        <span className="text-sm">Loading...</span>
                     </div>
                 )}
-                {!loading && (!selectedOrigin || !selectedDestination) && (
+                {!showLoading && (!selectedOrigin || !selectedDestination) && (
                     <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
                         <Search className="size-8 text-gray-300" />
                         <p className="text-sm text-gray-500">
@@ -339,7 +341,7 @@ const RouteListPage = () => {
                     </div>
                 )}
 
-                {!loading &&
+                {!showLoading &&
                     selectedOrigin &&
                     selectedDestination &&
                     (displayedOptions.length === 0 ? (
@@ -350,12 +352,9 @@ const RouteListPage = () => {
                         <div className="space-y-4">
                             {displayedOptions.map((option, i) => {
                                 const boarding = firstTransitLeg(option)
-                                const arrival = arrivals.get(
-                                    arrivalKey(
-                                        boarding?.departureStopName,
-                                        boarding?.routeName
-                                    )
-                                )
+                                const arrival = boarding
+                                    ? arrivals.get(boarding)
+                                    : undefined
                                 return (
                                     <RouteRealTimeCard
                                         key={i}
@@ -363,9 +362,7 @@ const RouteListPage = () => {
                                         arrival={arrival}
                                         arrivals={arrivals}
                                         isFastest={option === fastestOption}
-                                        onClick={() =>
-                                            setDetailOption(option)
-                                        }
+                                        onClick={() => setDetailOption(option)}
                                     />
                                 )
                             })}

@@ -20,13 +20,12 @@ import { vehicleIcon } from '@/util/transit/vehicleIcon'
 import { clockTimeFromMinutes } from '@/util/time/clockTime'
 import { FastestBadge } from '@/components/FastestBadge'
 import { VehiclePositionSheet } from '@/components/VehiclePositionSheet'
-import { arrivalKey } from '@/hooks/useArrivals'
 import { cn } from '@/lib/utils/utils'
 
 type Props = {
     option: IRouteOption
     arrival?: Arrival // boarding leg's realtime, for the hero countdown
-    arrivals?: Map<string, Arrival> // every leg's realtime, for per-leg tracking
+    arrivals?: Map<ILeg, Arrival> // every leg's realtime, for per-leg tracking
     isFastest?: boolean
     onClick?: () => void
 }
@@ -214,9 +213,7 @@ export function RouteRealTimeCard({
                 {transitLegs.map((leg, i) => {
                     const hasColor = !!leg.routeColor
                     const VehicleIcon = vehicleIcon(leg.vehicleType)
-                    const legArrival = arrivals?.get(
-                        arrivalKey(leg.departureStopName, leg.routeName)
-                    )
+                    const legArrival = arrivals?.get(leg)
                     const canTrackLeg =
                         legArrival?.isRealtime && !!legArrival.tripId
 

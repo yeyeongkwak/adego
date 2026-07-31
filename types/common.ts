@@ -34,6 +34,7 @@ export interface ILeg {
     arrivalStopName?: string
     numStops?: number
     departureIn?: string | null // Realtime (GTFS-R). null at the Google step, filled in later
+    departureValue?: number
 }
 
 // ---- One route option = One card -----
