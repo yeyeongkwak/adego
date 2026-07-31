@@ -9,12 +9,6 @@ import {
     useMap,
 } from '@vis.gl/react-google-maps'
 import { ArrowLeft, Footprints } from 'lucide-react'
-import {
-    Drawer,
-    DrawerContent,
-    DrawerDescription,
-    DrawerTitle,
-} from '@/components/ui/drawer'
 import { Button } from '@/components/ui/button'
 import { vehicleIcon, vehicleTypeToStopMode } from '@/util/transit/vehicleIcon'
 import { STOP_ICON_URL } from '@/util/map/stopIcons'
@@ -111,22 +105,14 @@ export function RouteDetailSheet({
     // when a prop changes" pattern used in TimePickerSheet/useAutocomplete).
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
     const [prevOption, setPrevOption] = useState(option)
-    // The step list is a draggable Drawer floating over the map (same
-    // pattern as HomeSheet over HomeMap) instead of stacked underneath it,
-    // so it can be pulled up to see more steps or down to see more map.
-    const [legsOpen, setLegsOpen] = useState(true)
-    const [activeSnapPoint, setActiveSnapPoint] = useState<
-        number | string | null
-    >(0.35)
     if (option !== prevOption) {
         setPrevOption(option)
         setSelectedIndex(null)
-        setLegsOpen(true)
-        setActiveSnapPoint(0.35)
     }
 
     const selectedItem =
         selectedIndex != null ? displayLegs[selectedIndex] : undefined
+
     const focusPath = selectedItem
         ? selectedItem.type === 'walk'
             ? selectedItem.path
@@ -156,14 +142,6 @@ export function RouteDetailSheet({
     if (!option) return null
 
     return (
-        // z-[70]: outranks Footer's z-[60] (see footer.tsx) — this is a
-        // full-screen takeover, unlike the partial-height HomeSheet that
-        // Footer's z-index was tuned to peek under. Deliberately not a
-        // Radix Sheet here: vaul's Drawer below is itself built on
-        // @radix-ui/react-dialog, and nesting one Radix Dialog root inside
-        // another (even non-modal) risks the outer one reading the inner's
-        // focus/portal as an outside interaction and dismissing itself —
-        // the exact bug just fixed in LocationSearchSheet's popup.
         <div className="animate-in slide-in-from-bottom fixed inset-0 z-[70] mx-auto flex h-full w-full max-w-md flex-col overflow-hidden bg-gray-50 duration-300">
             <div className="flex items-center gap-3 bg-[#002D62] px-4 py-4 text-white shadow-md">
                 <Button
@@ -185,7 +163,12 @@ export function RouteDetailSheet({
                 </div>
             </div>
 
-            <div className="relative flex-1">
+            {/* Fixed 2:1 split (map:steps) rather than a draggable overlay —
+                vaul's snapPoints assume the drawer content is nearly
+                full-viewport tall to compute its peek offset, so a route
+                with only a couple of legs (short content) got translated
+                completely off-screen instead of just peeking. */}
+            <div className="relative flex-[2]">
                 <div className="absolute inset-0">
                     {!apiKey ? (
                         <div className="flex h-full w-full items-center justify-center bg-gray-100 text-sm text-gray-500">
@@ -350,123 +333,86 @@ export function RouteDetailSheet({
                 </div>
             </div>
 
-            <Drawer
-                open={legsOpen}
-                onOpenChange={setLegsOpen}
-                snapPoints={[0.35, 0.9]}
-                activeSnapPoint={activeSnapPoint}
-                setActiveSnapPoint={setActiveSnapPoint}
-                modal={false}
-                dismissible
-                disablePreventScroll
-            >
-                <DrawerContent
-                    className="mx-auto max-w-md data-[vaul-drawer-direction=bottom]:mt-0 data-[vaul-drawer-direction=bottom]:max-h-[90vh]"
-                    onPointerDownOutside={() => setLegsOpen(false)}
-                >
-                    <DrawerTitle className="sr-only">Route steps</DrawerTitle>
-                    <DrawerDescription className="sr-only">
-                        Step-by-step legs for this route
-                    </DrawerDescription>
-                    <div className="overflow-y-auto px-4 pt-3 pb-24 scrollbar-thin">
-                        <ul className="space-y-3">
-                            {displayLegs.map((item, i) => {
-                                const isSelected = selectedIndex === i
-                                const toggle = () =>
-                                    setSelectedIndex(isSelected ? null : i)
+            <div className="flex-1 overflow-y-auto border-t border-gray-100 bg-gray-50 px-4 py-3 scrollbar-thin">
+                <ul className="space-y-3">
+                    {displayLegs.map((item, i) => {
+                        const isSelected = selectedIndex === i
+                        const toggle = () =>
+                            setSelectedIndex(isSelected ? null : i)
 
-                                if (item.type === 'walk') {
-                                    return (
-                                        <li key={i}>
-                                            <button
-                                                type="button"
-                                                onClick={toggle}
-                                                className={cn(
-                                                    'flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left shadow-sm transition-all',
-                                                    isSelected &&
-                                                        'ring-2 ring-accent'
-                                                )}
-                                            >
-                                                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
-                                                    <Footprints className="size-4" />
-                                                </span>
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-sm font-medium text-gray-700">
-                                                        Walk {item.durationText}
-                                                    </p>
-                                                    <p className="text-xs text-gray-500">
-                                                        {item.from} → {item.to}
-                                                    </p>
-                                                </div>
-                                            </button>
-                                        </li>
-                                    )
-                                }
+                        if (item.type === 'walk') {
+                            return (
+                                <li key={i}>
+                                    <button
+                                        type="button"
+                                        onClick={toggle}
+                                        className={cn(
+                                            'flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left shadow-sm transition-all',
+                                            isSelected && 'ring-2 ring-accent'
+                                        )}
+                                    >
+                                        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+                                            <Footprints className="size-4" />
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-medium text-gray-700">
+                                                Walk {item.durationText}
+                                            </p>
+                                            <p className="text-xs text-gray-500">
+                                                {item.from} → {item.to}
+                                            </p>
+                                        </div>
+                                    </button>
+                                </li>
+                            )
+                        }
 
-                                const leg = item.leg
-                                const VehicleIcon = vehicleIcon(leg.vehicleType)
-                                const hasColor = !!leg.routeColor
-                                return (
-                                    <li key={i}>
-                                        <button
-                                            type="button"
-                                            onClick={toggle}
-                                            className={cn(
-                                                'flex w-full items-start gap-3 rounded-2xl bg-white p-3 text-left shadow-sm transition-all',
-                                                isSelected &&
-                                                    'ring-2 ring-accent'
-                                            )}
-                                        >
-                                            <span
-                                                className="flex size-9 shrink-0 items-center justify-center rounded-full"
-                                                style={{
-                                                    backgroundColor: hasColor
-                                                        ? leg.routeColor
-                                                        : '#374151',
-                                                    color: hasColor
-                                                        ? textOnColor(
-                                                              leg.routeColor
-                                                          )
-                                                        : '#FFFFFF',
-                                                }}
-                                            >
-                                                <VehicleIcon className="size-4" />
-                                            </span>
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-sm font-semibold text-gray-900">
-                                                    {leg.routeName}
-                                                </p>
-                                                <p className="text-xs text-gray-500">
-                                                    {leg.departureStopName} →{' '}
-                                                    {leg.arrivalStopName}
-                                                </p>
-                                                <p className="text-xs text-gray-400">
-                                                    {leg.durationText}
-                                                    {leg.numStops != null &&
-                                                        ` · ${leg.numStops} stop${leg.numStops === 1 ? '' : 's'}`}
-                                                </p>
-                                            </div>
-                                        </button>
-                                    </li>
-                                )
-                            })}
-                        </ul>
-                    </div>
-                </DrawerContent>
-            </Drawer>
-
-            {!legsOpen && (
-                <button
-                    type="button"
-                    onClick={() => {
-                        setActiveSnapPoint(0.35)
-                        setLegsOpen(true)
-                    }}
-                    className="absolute bottom-6 left-1/2 z-30 -translate-x-1/2 rounded-full bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-xl transition-transform active:scale-95"
-                >
-                    Show steps
-                </button>
-            )}
+                        const leg = item.leg
+                        const VehicleIcon = vehicleIcon(leg.vehicleType)
+                        const hasColor = !!leg.routeColor
+                        return (
+                            <li key={i}>
+                                <button
+                                    type="button"
+                                    onClick={toggle}
+                                    className={cn(
+                                        'flex w-full items-start gap-3 rounded-2xl bg-white p-3 text-left shadow-sm transition-all',
+                                        isSelected && 'ring-2 ring-accent'
+                                    )}
+                                >
+                                    <span
+                                        className="flex size-9 shrink-0 items-center justify-center rounded-full"
+                                        style={{
+                                            backgroundColor: hasColor
+                                                ? leg.routeColor
+                                                : '#374151',
+                                            color: hasColor
+                                                ? textOnColor(leg.routeColor)
+                                                : '#FFFFFF',
+                                        }}
+                                    >
+                                        <VehicleIcon className="size-4" />
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-semibold text-gray-900">
+                                            {leg.routeName}
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                            {leg.departureStopName} →{' '}
+                                            {leg.arrivalStopName}
+                                        </p>
+                                        <p className="text-xs text-gray-400">
+                                            {leg.durationText}
+                                            {leg.numStops != null &&
+                                                ` · ${leg.numStops} stop${leg.numStops === 1 ? '' : 's'}`}
+                                        </p>
+                                    </div>
+                                </button>
+                            </li>
+                        )
+                    })}
+                </ul>
+            </div>
         </div>
     )
 }
