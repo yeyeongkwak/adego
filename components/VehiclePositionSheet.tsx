@@ -140,107 +140,116 @@ export function VehiclePositionSheet({
     }, [position, userLocation])
 
     return (
-        <Drawer open={open} onOpenChange={onOpenChange} dismissible>
-            <DrawerContent className="mx-auto max-h-[88vh] max-w-md">
-                <DrawerHeader>
-                    <DrawerTitle>
-                        {routeName ? `${label} ${routeName}` : label} · Live
-                        location
-                    </DrawerTitle>
-                    <DrawerDescription>
-                        {position
-                            ? `Updated ${secondsAgoLabel(position.updatedAtSec)}`
-                            : `Waiting for a GPS fix from this ${label.toLowerCase()}.`}
-                    </DrawerDescription>
-                </DrawerHeader>
+        // This sheet is opened from a button inside a clickable RouteCard.
+        // Its Drawer content is portaled to document.body, but React's
+        // synthetic events still bubble along the *React* tree, not the DOM
+        // tree — so without this, tapping the overlay to dismiss the sheet
+        // also bubbles up into the card's own onClick and opens the route
+        // detail sheet underneath it.
+        <div onClick={(e) => e.stopPropagation()}>
+            <Drawer open={open} onOpenChange={onOpenChange} dismissible>
+                <DrawerContent className="mx-auto max-h-[88vh] max-w-md">
+                    <DrawerHeader>
+                        <DrawerTitle>
+                            {routeName ? `${label} ${routeName}` : label} · Live
+                            location
+                        </DrawerTitle>
+                        <DrawerDescription>
+                            {position
+                                ? `Updated ${secondsAgoLabel(position.updatedAtSec)}`
+                                : `Waiting for a GPS fix from this ${label.toLowerCase()}.`}
+                        </DrawerDescription>
+                    </DrawerHeader>
 
-                <div className="h-[60vh] w-full px-4 pb-4">
-                    {!apiKey ? (
-                        <div className="flex h-full w-full items-center justify-center rounded-2xl bg-gray-100 text-sm text-gray-600">
-                            Missing NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-                        </div>
-                    ) : loading ? (
-                        <div className="flex h-full w-full items-center justify-center rounded-2xl bg-gray-100">
-                            <Spinner className="size-6 text-muted-foreground" />
-                        </div>
-                    ) : !position ? (
-                        <div className="flex h-full w-full items-center justify-center rounded-2xl bg-gray-100 px-6 text-center text-sm text-gray-600">
-                            No live position for this {label.toLowerCase()}{' '}
-                            right now — it may not have started its trip yet.
-                        </div>
-                    ) : (
-                        <div className="h-full w-full overflow-hidden rounded-2xl">
-                            <APIProvider apiKey={apiKey}>
-                                <Map
-                                    className="h-full w-full"
-                                    {...(initialBounds
-                                        ? {
-                                              defaultBounds: {
-                                                  ...initialBounds,
-                                                  padding: 64,
-                                              },
-                                          }
-                                        : {
-                                              defaultCenter: {
-                                                  lat: position.lat,
-                                                  lng: position.lng,
-                                              },
-                                              defaultZoom: 16,
-                                          })}
-                                    disableDefaultUI
-                                    gestureHandling="greedy"
-                                >
-                                    <Marker
-                                        position={{
-                                            lat: position.lat,
-                                            lng: position.lng,
-                                        }}
-                                        title={
-                                            routeName
-                                                ? `${label} ${routeName}`
-                                                : label
-                                        }
-                                        icon={{
-                                            url: iconUrl,
-                                            scaledSize: {
-                                                width: 32,
-                                                height: 32,
-                                            } as google.maps.Size,
-                                            anchor: {
-                                                x: 16,
-                                                y: 16,
-                                            } as google.maps.Point,
-                                        }}
-                                    />
-                                    {userLocation && (
+                    <div className="h-[60vh] w-full px-4 pb-4">
+                        {!apiKey ? (
+                            <div className="flex h-full w-full items-center justify-center rounded-2xl bg-gray-100 text-sm text-gray-600">
+                                Missing NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+                            </div>
+                        ) : loading ? (
+                            <div className="flex h-full w-full items-center justify-center rounded-2xl bg-gray-100">
+                                <Spinner className="size-6 text-muted-foreground" />
+                            </div>
+                        ) : !position ? (
+                            <div className="flex h-full w-full items-center justify-center rounded-2xl bg-gray-100 px-6 text-center text-sm text-gray-600">
+                                No live position for this {label.toLowerCase()}{' '}
+                                right now — it may not have started its trip
+                                yet.
+                            </div>
+                        ) : (
+                            <div className="h-full w-full overflow-hidden rounded-2xl">
+                                <APIProvider apiKey={apiKey}>
+                                    <Map
+                                        className="h-full w-full"
+                                        {...(initialBounds
+                                            ? {
+                                                  defaultBounds: {
+                                                      ...initialBounds,
+                                                      padding: 64,
+                                                  },
+                                              }
+                                            : {
+                                                  defaultCenter: {
+                                                      lat: position.lat,
+                                                      lng: position.lng,
+                                                  },
+                                                  defaultZoom: 16,
+                                              })}
+                                        disableDefaultUI
+                                        gestureHandling="greedy"
+                                    >
                                         <Marker
-                                            position={userLocation}
-                                            title="Your location"
+                                            position={{
+                                                lat: position.lat,
+                                                lng: position.lng,
+                                            }}
+                                            title={
+                                                routeName
+                                                    ? `${label} ${routeName}`
+                                                    : label
+                                            }
                                             icon={{
-                                                path: 0 as google.maps.SymbolPath, // SymbolPath.CIRCLE
-                                                scale: 8,
-                                                fillColor: '#2563EB',
-                                                fillOpacity: 1,
-                                                strokeColor: '#FFFFFF',
-                                                strokeWeight: 3,
+                                                url: iconUrl,
+                                                scaledSize: {
+                                                    width: 32,
+                                                    height: 32,
+                                                } as google.maps.Size,
+                                                anchor: {
+                                                    x: 16,
+                                                    y: 16,
+                                                } as google.maps.Point,
                                             }}
                                         />
-                                    )}
-                                    <RouteOverlay
-                                        vehicle={{
-                                            lat: position.lat,
-                                            lng: position.lng,
-                                        }}
-                                        user={userLocation}
-                                        path={routePath}
-                                        color={iconColor}
-                                    />
-                                </Map>
-                            </APIProvider>
-                        </div>
-                    )}
-                </div>
-            </DrawerContent>
-        </Drawer>
+                                        {userLocation && (
+                                            <Marker
+                                                position={userLocation}
+                                                title="Your location"
+                                                icon={{
+                                                    path: 0 as google.maps.SymbolPath, // SymbolPath.CIRCLE
+                                                    scale: 8,
+                                                    fillColor: '#2563EB',
+                                                    fillOpacity: 1,
+                                                    strokeColor: '#FFFFFF',
+                                                    strokeWeight: 3,
+                                                }}
+                                            />
+                                        )}
+                                        <RouteOverlay
+                                            vehicle={{
+                                                lat: position.lat,
+                                                lng: position.lng,
+                                            }}
+                                            user={userLocation}
+                                            path={routePath}
+                                            color={iconColor}
+                                        />
+                                    </Map>
+                                </APIProvider>
+                            </div>
+                        )}
+                    </div>
+                </DrawerContent>
+            </Drawer>
+        </div>
     )
 }
