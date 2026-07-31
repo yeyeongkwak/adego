@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
                 body: JSON.stringify({
                     input: q,
                     includedRegionCodes: ['au'], // Australia only
-                    locationBias: {
+                    locationRestriction: {
                         circle: { center: ADELAIDE, radius: 50000.0 }, // ~50km around Adelaide
                     },
                     ...(sessionToken ? { sessionToken } : {}),

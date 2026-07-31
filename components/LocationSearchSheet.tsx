@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
     X,
+    CircleX,
     Search,
     Navigation,
     Map,
@@ -205,9 +206,10 @@ export function LocationSearchSheet({
                                         variant="ghost"
                                         size="icon"
                                         onClick={() => setSearchQuery('')}
+                                        aria-label="Clear search"
                                         className="absolute right-2 top-1/2 z-10 size-auto -translate-y-1/2 rounded-full p-1.5 hover:bg-gray-200 hover:text-foreground"
                                     >
-                                        <X className="size-4 text-gray-500" />
+                                        <CircleX className="size-4 text-gray-500" />
                                     </Button>
                                 )}
                             </div>
@@ -215,6 +217,7 @@ export function LocationSearchSheet({
                                 variant="ghost"
                                 size="icon"
                                 onClick={onClose}
+                                aria-label="Close"
                                 className="size-auto shrink-0 rounded-full p-2 hover:bg-gray-100 hover:text-foreground"
                             >
                                 <X className="size-6 text-gray-700" />
@@ -225,9 +228,9 @@ export function LocationSearchSheet({
                     {/* Content */}
                     <div className="flex-1 overflow-y-auto pb-8 scrollbar-thin">
                         {hasQuery ? (
-                            <div className="p-4 space-y-1">
+                            <div className="flex h-full flex-col gap-1 p-4">
                                 {(loading || resolving) && (
-                                    <div className="flex items-center gap-2 p-4 text-sm text-gray-500">
+                                    <div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm text-gray-500">
                                         <Loader2 className="size-4 animate-spin" />
                                         {resolving
                                             ? 'Getting location…'
@@ -238,12 +241,16 @@ export function LocationSearchSheet({
                                 {!loading &&
                                     !resolving &&
                                     predictions.length === 0 && (
-                                        <p className="p-4 text-sm text-gray-500">
-                                            No results.
-                                        </p>
+                                        <div className="flex flex-1 flex-col items-center justify-center text-center text-sm text-gray-500">
+                                            <p>
+                                                No results. Ade-Go Beep only
+                                                covers the Adelaide area.
+                                            </p>
+                                        </div>
                                     )}
 
                                 {!resolving &&
+                                    predictions.length > 0 &&
                                     predictions.map((prediction) => (
                                         <div
                                             key={prediction.placeId}
