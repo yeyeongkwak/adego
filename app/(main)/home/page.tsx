@@ -27,12 +27,30 @@ export default function HomePage() {
     // change) — granting once keeps the blue dot moving via watchPosition
     // instead of asking again every time /home remounts.
     const coords = useGeolocationStore((s) => s.coords)
+    const permission = useGeolocationStore((s) => s.permission)
     const permissionInitialized = useGeolocationStore((s) => s.initialized)
     const locating = useGeolocationStore((s) => s.locating)
     const enableLocation = useGeolocationStore((s) => s.enable)
 
     const located = coords != null
     const center = coords ?? ADELAIDE
+
+    // Waiting for the first GPS fix (permission already granted/unknown, no
+    // decision needed) — as opposed to waiting on the user to grant/deny.
+    const acquiringLocation =
+        permissionInitialized &&
+        !located &&
+        (permission === 'granted' || permission === 'unknown')
+
+    // Only show the spinner if acquisition is still going after a beat.
+    // Stale `true` from a prior cycle is never read once acquiringLocation
+    // is false — the render below only consults it while still acquiring.
+    const [showLoadingOverlay, setShowLoadingOverlay] = useState(false)
+    useEffect(() => {
+        if (!acquiringLocation) return
+        const timer = setTimeout(() => setShowLoadingOverlay(true), 1000)
+        return () => clearTimeout(timer)
+    }, [acquiringLocation])
 
     const [mapMountKey, setMapMountKey] = useState(0)
     useEffect(() => {
@@ -134,6 +152,60 @@ export default function HomePage() {
                 onSelectedStopChange={setSelectedStop}
             />
 
+            {permissionInitialized &&
+                !located &&
+                (acquiringLocation ? showLoadingOverlay : true) && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-white/40 backdrop-blur-md">
+                        {acquiringLocation ? (
+                            <div className="flex flex-col items-center gap-2 text-gray-600">
+                                <Loader2 className="size-6 animate-spin text-primary" />
+                                <p className="text-sm font-medium">
+                                    Loading your location...
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="mx-6 flex flex-col items-center gap-3 rounded-2xl bg-white p-6 text-center shadow-xl">
+                                <LocateFixed className="size-8 text-primary" />
+                                {permission === 'denied' ? (
+                                    <>
+                                        <p className="text-sm font-semibold text-gray-900">
+                                            Location access is turned off
+                                        </p>
+                                        <p className="text-sm text-gray-600">
+                                            Allow location access in your
+                                            browser settings, then try again.
+                                        </p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-sm font-semibold text-gray-900">
+                                            Turn on location?
+                                        </p>
+                                        <p className="text-sm text-gray-600">
+                                            Ade-Go Beep needs your location to
+                                            show nearby stops.
+                                        </p>
+                                    </>
+                                )}
+                                <Button
+                                    size="sm"
+                                    className="rounded-full"
+                                    onClick={handleEnableLocationClick}
+                                    disabled={locating}
+                                >
+                                    {locating ? (
+                                        <Loader2 className="size-4 animate-spin" />
+                                    ) : permission === 'denied' ? (
+                                        'Try again'
+                                    ) : (
+                                        'Turn on location'
+                                    )}
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
             <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex flex-col gap-3 p-4">
                 <div className="flex items-center justify-between">
                     <span className="pointer-events-auto rounded-full bg-primary px-4 py-2 text-lg font-extrabold text-primary-foreground shadow-lg">
@@ -150,27 +222,6 @@ export default function HomePage() {
                         </Button>
                     )}
                 </div>
-
-                {permissionInitialized && !located && (
-                    <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-white p-3 shadow-lg">
-                        <LocateFixed className="size-5 shrink-0 text-primary" />
-                        <p className="flex-1 text-sm font-medium text-gray-700">
-                            Enable location for nearby stops
-                        </p>
-                        <Button
-                            size="sm"
-                            className="rounded-full"
-                            onClick={handleEnableLocationClick}
-                            disabled={locating}
-                        >
-                            {locating ? (
-                                <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                                'Enable'
-                            )}
-                        </Button>
-                    </div>
-                )}
 
                 {/*{!isAuthenticated && (*/}
                 {/*    <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-white p-3 shadow-lg">*/}

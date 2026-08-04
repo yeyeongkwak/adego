@@ -16,6 +16,28 @@ let watchId: number | null = null
 
 let pendingResolvers: ((ok: boolean) => void)[] = []
 
+const COORDS_STORAGE_KEY = 'adego:lastKnownCoords'
+
+function readCachedCoords(): Coords | null {
+    if (typeof window === 'undefined') return null
+    try {
+        const raw = window.localStorage.getItem(COORDS_STORAGE_KEY)
+        if (!raw) return null
+        const parsed = JSON.parse(raw)
+        if (typeof parsed?.lat === 'number' && typeof parsed?.lng === 'number') {
+            return { lat: parsed.lat, lng: parsed.lng }
+        }
+    } catch {}
+    return null
+}
+
+function writeCachedCoords(coords: Coords) {
+    if (typeof window === 'undefined') return
+    try {
+        window.localStorage.setItem(COORDS_STORAGE_KEY, JSON.stringify(coords))
+    } catch {}
+}
+
 function clearActiveWatch() {
     if (watchId != null && navigator.geolocation) {
         navigator.geolocation.clearWatch(watchId)
@@ -30,7 +52,7 @@ function flushPending(ok: boolean) {
 }
 
 export const useGeolocationStore = create<GeolocationStore>((set, get) => ({
-    coords: null,
+    coords: readCachedCoords(),
     permission: 'unknown',
     locating: false,
     initialized: false,
@@ -53,11 +75,13 @@ export const useGeolocationStore = create<GeolocationStore>((set, get) => ({
 
             watchId = navigator.geolocation.watchPosition(
                 (position) => {
+                    const coords = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude,
+                    }
+                    writeCachedCoords(coords)
                     set({
-                        coords: {
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude,
-                        },
+                        coords,
                         permission: 'granted',
                         locating: false,
                     })
