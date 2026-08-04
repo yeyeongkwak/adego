@@ -77,6 +77,7 @@ export const useGeolocationStore = create<GeolocationStore>((set, get) => ({
     init: () => {
         if (!navigator.permissions) {
             set({ initialized: true })
+            get().enable()
             return
         }
 
@@ -101,6 +102,9 @@ export const useGeolocationStore = create<GeolocationStore>((set, get) => ({
                     }
                 }
             })
-            .catch(() => set({ initialized: true }))
+            .catch(() => {
+                set({ initialized: true })
+                get().enable()
+            })
     },
 }))
