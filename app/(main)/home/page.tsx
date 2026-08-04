@@ -43,8 +43,6 @@ export default function HomePage() {
         (permission === 'granted' || permission === 'unknown')
 
     // Only show the spinner if acquisition is still going after a beat.
-    // Stale `true` from a prior cycle is never read once acquiringLocation
-    // is false — the render below only consults it while still acquiring.
     const [showLoadingOverlay, setShowLoadingOverlay] = useState(false)
     useEffect(() => {
         if (!acquiringLocation) return
